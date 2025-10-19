@@ -132,10 +132,12 @@ case "$COMMAND" in
         project_dir="$(pwd)"
         project_name="$(basename "$project_dir")"
 
-        # Launch Claude Code with the analysis prompt
-        cat "$STARFORGE_DIR/templates/initial-analysis-prompt.md" | \
-        sed "s|\[Will be provided when this prompt is invoked\]|$project_dir|g" | \
-        claude
+        # Prepare analysis prompt (capture in variable to preserve TTY)
+        analysis_prompt=$(cat "$STARFORGE_DIR/templates/initial-analysis-prompt.md" | \
+        sed "s|\[Will be provided when this prompt is invoked\]|$project_dir|g")
+
+        # Launch Claude Code with the analysis prompt as argument (not piped to preserve TTY)
+        claude "$analysis_prompt"
         ;;
 
     monitor)
@@ -243,8 +245,8 @@ case "$COMMAND" in
             exit 1
         fi
 
-        # Create invocation prompt
-        echo "Use the ${agent_name} agent." | claude
+        # Invoke Claude Code with agent prompt as argument (not piped to preserve TTY)
+        claude "Use the ${agent_name} agent."
         ;;
 
     status)
