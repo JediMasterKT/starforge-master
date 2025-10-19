@@ -136,18 +136,23 @@ fi
 # Return to main repo
 cd ~/empowerai
 
-# 3. Update coordination file
-cat > .claude/coordination/${AGENT}-status.json << JSON
-{
-  "agent": "$AGENT",
-  "status": "working",
-  "ticket": $TICKET,
-  "assigned_at": "$(date -Iseconds)",
-  "worktree": "empowerai-${AGENT}",
-  "branch": "feature/ticket-${TICKET}",
-  "based_on": "origin/main"
-}
-JSON
+# 3. Update coordination file (using jq to avoid Write tool prompts)
+STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+jq -n \
+  --arg agent "$AGENT" \
+  --arg ticket "$TICKET" \
+  --arg assigned_at "$(date -Iseconds)" \
+  --arg worktree "empowerai-${AGENT}" \
+  --arg branch "feature/ticket-${TICKET}" \
+  '{
+    agent: $agent,
+    status: "working",
+    ticket: ($ticket | tonumber),
+    assigned_at: $assigned_at,
+    worktree: $worktree,
+    branch: $branch,
+    based_on: "origin/main"
+  }' > "$STATUS_FILE"
 
 # 4. IMMEDIATELY trigger agent (same operation - cannot be skipped)
 source .claude/scripts/trigger-helpers.sh
