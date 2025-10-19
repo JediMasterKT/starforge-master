@@ -1,0 +1,332 @@
+#!/bin/bash
+# StarForge CLI - Portable AI Development Team
+# Version: 1.0.0
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Get StarForge installation directory
+STARFORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Command dispatcher
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+    install)
+        # Run the installer
+        "$STARFORGE_DIR/bin/install.sh" "$@"
+        ;;
+
+    analyze)
+        # Trigger Main Claude to analyze project
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🔍 LAUNCHING PROJECT ANALYSIS${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "Main Claude will now analyze your repository and generate:"
+        echo "  - PROJECT_CONTEXT.md (what this project is)"
+        echo "  - TECH_STACK.md (technologies used)"
+        echo "  - initial-assessment.md (current state analysis)"
+        echo ""
+        echo -e "${YELLOW}Opening Claude Code CLI...${NC}"
+        echo ""
+
+        # Check if Claude Code CLI is installed
+        if ! command -v claude &> /dev/null; then
+            echo -e "${RED}❌ Claude Code CLI not found${NC}"
+            echo -e "   Install from: https://docs.claude.com/claude-code"
+            exit 1
+        fi
+
+        # Create analysis prompt with context
+        project_dir="$(pwd)"
+        project_name="$(basename "$project_dir")"
+
+        # Launch Claude Code with the analysis prompt
+        cat "$STARFORGE_DIR/templates/initial-analysis-prompt.md" | \
+        sed "s|\[Will be provided when this prompt is invoked\]|$project_dir|g" | \
+        claude --prompt-file /dev/stdin
+        ;;
+
+    monitor)
+        # Start the trigger monitor
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        if [ ! -f ".claude/scripts/trigger-monitor.sh" ]; then
+            echo -e "${RED}❌ Trigger monitor script not found${NC}"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🔍 Starting Trigger Monitor${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "Watching for agent handoffs..."
+        echo "Press Ctrl+C to stop"
+        echo ""
+
+        exec "./.claude/scripts/trigger-monitor.sh" "$@"
+        ;;
+
+    use)
+        # Invoke a specific agent
+        agent="$1"
+
+        if [ -z "$agent" ]; then
+            echo -e "${RED}❌ Please specify an agent${NC}"
+            echo ""
+            echo "Available agents:"
+            echo "  - orchestrator"
+            echo "  - senior-engineer"
+            echo "  - junior-engineer"
+            echo "  - qa-engineer"
+            echo "  - tpm-agent"
+            echo ""
+            echo "Usage: starforge use <agent>"
+            echo "Example: starforge use senior-engineer"
+            exit 1
+        fi
+
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Normalize agent name
+        agent=$(echo "$agent" | tr '[:upper:]' '[:lower:]' | sed 's/[_-]//g')
+
+        case "$agent" in
+            orchestrator)
+                agent_file=".claude/agents/orchestrator.md"
+                agent_name="Orchestrator"
+                ;;
+            seniorengineer|senior)
+                agent_file=".claude/agents/senior-engineer.md"
+                agent_name="Senior Engineer"
+                ;;
+            juniorengineer|junior|juniordeva|juniordevb|juniordevc)
+                agent_file=".claude/agents/junior-engineer.md"
+                agent_name="Junior Engineer"
+                ;;
+            qaengineer|qa)
+                agent_file=".claude/agents/qa-engineer.md"
+                agent_name="QA Engineer"
+                ;;
+            tpmagent|tpm)
+                agent_file=".claude/agents/tpm-agent.md"
+                agent_name="TPM Agent"
+                ;;
+            *)
+                echo -e "${RED}❌ Unknown agent: $1${NC}"
+                echo ""
+                echo "Available agents:"
+                echo "  - orchestrator"
+                echo "  - senior-engineer"
+                echo "  - junior-engineer"
+                echo "  - qa-engineer"
+                echo "  - tpm-agent"
+                exit 1
+                ;;
+        esac
+
+        if [ ! -f "$agent_file" ]; then
+            echo -e "${RED}❌ Agent file not found: $agent_file${NC}"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🤖 Invoking $agent_name${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "${YELLOW}Opening Claude Code with $agent_name agent...${NC}"
+        echo ""
+
+        # Check if Claude Code CLI is installed
+        if ! command -v claude &> /dev/null; then
+            echo -e "${RED}❌ Claude Code CLI not found${NC}"
+            echo -e "   Install from: https://docs.claude.com/claude-code"
+            exit 1
+        fi
+
+        # Create invocation prompt
+        echo "Use the ${agent_name} agent." | claude --prompt-file /dev/stdin
+        ;;
+
+    status)
+        # Show agent status
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🤖 StarForge Agent Status${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Check for worktrees
+        if command -v git &> /dev/null && git worktree list &> /dev/null; then
+            echo -e "${GREEN}WORKTREES:${NC}"
+            git worktree list | while IFS= read -r line; do
+                if echo "$line" | grep -q "junior-dev"; then
+                    branch=$(echo "$line" | awk '{print $3}' | tr -d '[]')
+                    path=$(echo "$line" | awk '{print $1}')
+                    echo "  $(basename "$path"): $branch"
+                fi
+            done
+            echo ""
+        fi
+
+        # Check for coordination files
+        if [ -d ".claude/coordination" ]; then
+            echo -e "${GREEN}AGENTS:${NC}"
+            has_agents=false
+            for status_file in .claude/coordination/*-status.json; do
+                if [ -f "$status_file" ]; then
+                    has_agents=true
+                    agent=$(basename "$status_file" | sed 's/-status.json//')
+                    status=$(jq -r '.status // "unknown"' "$status_file" 2>/dev/null || echo "unknown")
+                    ticket=$(jq -r '.ticket // "none"' "$status_file" 2>/dev/null || echo "none")
+
+                    if [ "$status" = "working" ] && [ "$ticket" != "none" ]; then
+                        echo "  $agent: WORKING on #$ticket"
+                    elif [ "$status" = "idle" ]; then
+                        echo "  $agent: IDLE (ready for work)"
+                    else
+                        echo "  $agent: $status"
+                    fi
+                fi
+            done
+
+            if [ "$has_agents" = false ]; then
+                echo "  No active agents (coordination files will be created when orchestrator assigns work)"
+            fi
+            echo ""
+        fi
+
+        # Check GitHub integration
+        if command -v gh &> /dev/null && gh auth status &> /dev/null; then
+            echo -e "${GREEN}GITHUB:${NC}"
+
+            # Check if we have a remote
+            if git remote get-url origin &> /dev/null; then
+                ready=$(gh issue list --label "ready" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+                in_progress=$(gh issue list --label "in-progress" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+                needs_review=$(gh pr list --label "needs-review" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+
+                echo "  Ready tickets: $ready"
+                echo "  In progress: $in_progress"
+                echo "  Needs review: $needs_review"
+            else
+                echo "  No remote configured (local only mode)"
+            fi
+            echo ""
+        fi
+
+        # Check for recent triggers
+        if [ -d ".claude/triggers" ]; then
+            echo -e "${GREEN}RECENT ACTIVITY:${NC}"
+            trigger_count=$(find .claude/triggers -name "*.trigger" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+            if [ "$trigger_count" -gt 0 ]; then
+                find .claude/triggers -name "*.trigger" -type f -exec ls -t {} + 2>/dev/null | head -3 | while read trigger; do
+                    from=$(jq -r '.from_agent // "unknown"' "$trigger" 2>/dev/null || echo "unknown")
+                    to=$(jq -r '.to_agent // "unknown"' "$trigger" 2>/dev/null || echo "unknown")
+                    action=$(jq -r '.action // "unknown"' "$trigger" 2>/dev/null || echo "unknown")
+                    time=$(stat -f "%Sm" -t "%H:%M:%S" "$trigger" 2>/dev/null || echo "unknown")
+                    echo "  [$time] $from → $to | $action"
+                done
+            else
+                echo "  No triggers yet (will appear when agents communicate)"
+            fi
+            echo ""
+        fi
+        ;;
+
+    help|--help|-h)
+        # Show help
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🚀 StarForge - AI Development Team${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "A portable multi-agent development system for Claude Code"
+        echo ""
+        echo -e "${GREEN}COMMANDS:${NC}"
+        echo ""
+        echo -e "  ${YELLOW}starforge install${NC}"
+        echo "    Install StarForge in the current project"
+        echo "    Creates .claude/ structure, agent definitions, and git worktrees"
+        echo ""
+        echo -e "  ${YELLOW}starforge analyze${NC}"
+        echo "    Analyze your project and generate documentation"
+        echo "    Creates PROJECT_CONTEXT.md, TECH_STACK.md, and initial-assessment.md"
+        echo ""
+        echo -e "  ${YELLOW}starforge use <agent>${NC}"
+        echo "    Invoke a specific agent"
+        echo "    Agents: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent"
+        echo ""
+        echo -e "  ${YELLOW}starforge monitor${NC}"
+        echo "    Watch for agent triggers and handoffs (run in separate terminal)"
+        echo ""
+        echo -e "  ${YELLOW}starforge status${NC}"
+        echo "    Show current agent status, worktrees, and GitHub queue"
+        echo ""
+        echo -e "  ${YELLOW}starforge help${NC}"
+        echo "    Show this help message"
+        echo ""
+        echo -e "${GREEN}EXAMPLES:${NC}"
+        echo ""
+        echo "  # Install StarForge in a new project"
+        echo "  cd my-project && starforge install"
+        echo ""
+        echo "  # Analyze an existing project"
+        echo "  starforge analyze"
+        echo ""
+        echo "  # Create a breakdown for a feature"
+        echo "  starforge use senior-engineer"
+        echo ""
+        echo "  # Check what agents are doing"
+        echo "  starforge status"
+        echo ""
+        echo -e "${GREEN}WORKFLOW:${NC}"
+        echo ""
+        echo "  1. Install:        starforge install"
+        echo "  2. Analyze:        starforge analyze"
+        echo "  3. Plan:           starforge use senior-engineer"
+        echo "  4. Create tickets: (TPM triggered automatically)"
+        echo "  5. Monitor:        starforge monitor (in separate terminal)"
+        echo "  6. Assign work:    starforge use orchestrator"
+        echo "  7. Check status:   starforge status"
+        echo ""
+        echo -e "${GREEN}DOCUMENTATION:${NC}"
+        echo "  https://github.com/yourusername/starforge"
+        echo ""
+        ;;
+
+    *)
+        echo -e "${RED}❌ Unknown command: $COMMAND${NC}"
+        echo ""
+        echo "Run 'starforge help' for available commands"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,398 @@
+# StarForge - AI Development Team
+
+A portable multi-agent development system for Claude Code that brings a complete AI team to any project.
+
+## What is StarForge?
+
+StarForge is a portable package of specialized AI agents that work together to build software. Install it once, take it anywhere. Each agent has a specific role:
+
+- **Orchestrator**: Coordinates parallel development, assigns work to junior-devs
+- **Senior Engineer**: Creates technical breakdowns and architecture designs
+- **Junior Engineers**: Implement features in parallel using git worktrees
+- **QA Engineer**: Reviews code, validates implementations, runs tests
+- **TPM Agent**: Creates GitHub Issues from breakdowns for task tracking
+
+## Features
+
+- **🚀 One-Command Installation**: `starforge install` sets up everything
+- **📊 Project Analysis**: Automated codebase analysis and documentation generation
+- **🔄 Parallel Development**: Multiple agents work simultaneously via git worktrees
+- **🎯 GitHub Integration**: Automatic issue tracking and PR management
+- **🧪 Fully Tested**: TDD approach with 58 installer tests + 38 CLI tests
+- **🔒 IP Protected**: .claude/ folder never committed to your repositories
+- **🎨 Zero Configuration**: Works out of the box with sensible defaults
+
+## Quick Start
+
+### 1. Install StarForge CLI
+
+```bash
+# Clone or download StarForge
+cd ~/starforge-master
+
+# Add to PATH
+bash install-cli.sh
+
+# Verify installation
+source ~/.zshrc  # or source ~/.bashrc
+starforge help
+```
+
+### 2. Install in a Project
+
+```bash
+# Navigate to your project
+cd my-project
+
+# Install StarForge
+starforge install
+
+# Follow interactive prompts:
+# - GitHub remote setup (recommended)
+# - Number of junior-dev agents (1-5, default: 3)
+# - Proceed with installation
+```
+
+### 3. Analyze Your Project (Existing Projects)
+
+```bash
+# Generate PROJECT_CONTEXT.md, TECH_STACK.md, and initial-assessment.md
+starforge analyze
+```
+
+### 4. Start Building
+
+```bash
+# In terminal 1: Monitor agent activity
+starforge monitor
+
+# In terminal 2: Invoke agents
+starforge use senior-engineer  # Create breakdown
+# (TPM automatically creates GitHub Issues)
+starforge use orchestrator     # Assign work to junior-devs
+```
+
+## Commands
+
+### `starforge install`
+
+Installs StarForge in the current project. Creates:
+- `.claude/` directory with agents, scripts, hooks
+- Git worktrees for parallel development
+- Permissions and settings configuration
+
+**Prerequisites:**
+- Git installed
+- GitHub CLI (`gh`) installed and authenticated
+- `jq` installed for JSON processing
+
+### `starforge analyze`
+
+Launches Main Claude to analyze your project and generate:
+- `PROJECT_CONTEXT.md`: What the project does
+- `TECH_STACK.md`: Technologies and architecture
+- `initial-assessment.md`: Current state analysis
+
+### `starforge use <agent>`
+
+Invokes a specific agent:
+```bash
+starforge use orchestrator
+starforge use senior-engineer
+starforge use junior-engineer
+starforge use qa-engineer
+starforge use tpm-agent
+```
+
+### `starforge monitor`
+
+Starts the trigger monitor to watch agent handoffs in real-time. Run in a separate terminal.
+
+### `starforge status`
+
+Shows current state:
+- Active git worktrees
+- Agent status (working/idle)
+- GitHub queue (ready tickets, in-progress, needs-review)
+- Recent agent activity
+
+### `starforge help`
+
+Shows comprehensive help and usage examples.
+
+## Workflow
+
+### For Existing Projects
+
+1. **Install**: `starforge install`
+2. **Analyze**: `starforge analyze`
+3. **Plan**: `starforge use senior-engineer` (creates breakdown)
+4. **Create Tickets**: TPM automatically triggered to create GitHub Issues
+5. **Monitor**: `starforge monitor` (in separate terminal)
+6. **Assign Work**: `starforge use orchestrator`
+7. **Check Status**: `starforge status`
+
+### For New Projects
+
+1. **Install**: `starforge install`
+2. **Brainstorm**: Use Main Claude to explore ideas
+3. **Plan**: `starforge use senior-engineer`
+4. **Execute**: `starforge use orchestrator`
+
+## How It Works
+
+### Multi-Agent Architecture
+
+StarForge uses specialized agents that communicate via trigger files:
+
+```
+Senior Engineer → TPM Agent → Orchestrator → Junior Devs → QA Engineer
+     (breakdown)   (tickets)    (assigns)      (code)      (review)
+```
+
+### Git Worktrees for Parallelism
+
+Each junior-dev works in its own worktree, enabling true parallel development:
+
+```
+my-project/              # Main repo (orchestrator, senior, TPM, QA)
+my-project-junior-dev-a/ # Worktree for junior-dev-a
+my-project-junior-dev-b/ # Worktree for junior-dev-b
+my-project-junior-dev-c/ # Worktree for junior-dev-c
+```
+
+### Trigger-Based Communication
+
+Agents communicate asynchronously via JSON trigger files in `.claude/triggers/`:
+
+```json
+{
+  "from_agent": "senior-engineer",
+  "to_agent": "tpm-agent",
+  "action": "create-tickets",
+  "breakdown_file": ".claude/breakdowns/feature-breakdown.md"
+}
+```
+
+The trigger monitor watches for these files and notifies you of agent activity.
+
+## Directory Structure
+
+```
+.claude/
+├── agents/              # Agent definition files
+│   ├── orchestrator.md
+│   ├── senior-engineer.md
+│   ├── junior-engineer.md
+│   ├── qa-engineer.md
+│   ├── tpm-agent.md
+│   ├── agent-learnings/ # Project-specific learnings
+│   └── scratchpads/     # Agent working memory
+├── scripts/             # Helper scripts
+│   ├── trigger-helpers.sh
+│   ├── trigger-monitor.sh
+│   └── watch-triggers.sh
+├── hooks/               # Git safety hooks
+│   ├── block-main-edits.sh
+│   └── block-main-bash.sh
+├── coordination/        # Agent status files
+├── triggers/            # Agent communication
+├── breakdowns/          # Technical designs
+├── qa/                  # Test reports
+├── research/            # Investigation notes
+├── spikes/              # Proof-of-concepts
+├── CLAUDE.md            # Agent protocol
+├── LEARNINGS.md         # Global learnings
+└── settings.json        # Permissions and hooks
+```
+
+## Testing
+
+StarForge is built with TDD. All tests pass before release:
+
+```bash
+# Run installer tests (58 tests)
+cd ~/starforge-master
+bash ./bin/test-install.sh
+
+# Run CLI tests (38 tests)
+bash ./bin/test-cli.sh
+```
+
+## GitHub Integration
+
+StarForge works best with GitHub:
+
+- **TPM creates Issues**: Automatic ticket creation from breakdowns
+- **Junior-devs create PRs**: Each feature gets a pull request
+- **QA comments on PRs**: Feedback directly in code review
+- **Orchestrator tracks progress**: GitHub API for work visibility
+
+**Without GitHub**, you can still use StarForge in local-only mode with limited features.
+
+## Requirements
+
+- **macOS** (tested on macOS 14+)
+- **Git** 2.20+
+- **GitHub CLI** (`gh`) - for GitHub integration
+- **jq** - for JSON processing
+- **Claude Code CLI** - for AI agents
+- **terminal-notifier** (optional) - for desktop notifications
+
+Install prerequisites:
+```bash
+brew install gh jq terminal-notifier
+gh auth login
+```
+
+## Configuration
+
+StarForge is zero-configuration by default. Advanced users can modify:
+
+- `.claude/settings.json`: Permissions and hooks
+- `.claude/agents/agent-learnings/`: Project-specific knowledge
+- Number of junior-devs during installation (1-5)
+
+## Important Notes
+
+### StarForge IP
+
+The `.claude/` folder contains StarForge intellectual property:
+- **Never commit** `.claude/` to git (automatically in .gitignore)
+- **Never modify** agent definition files
+- **Never distribute** StarForge agents outside of licensed use
+
+You own:
+- `PROJECT_CONTEXT.md`
+- `TECH_STACK.md`
+- All code generated by agents
+
+### Worktree Management
+
+Worktrees are created during installation. To remove:
+```bash
+git worktree list
+git worktree remove <path>
+```
+
+To add more:
+```bash
+# Example: Add 4th junior-dev
+git worktree add ../my-project-junior-dev-d -b worktree-d main
+```
+
+## Troubleshooting
+
+### "StarForge not installed"
+Run `starforge install` in your project directory.
+
+### "Claude Code CLI not found"
+Install from: https://docs.claude.com/claude-code
+
+### "GitHub CLI not authenticated"
+Run: `gh auth login`
+
+### Worktree creation fails
+Ensure you're in a git repository with at least one commit.
+
+### Tests failing
+Ensure all prerequisites are installed and you're running from `~/starforge-master/`.
+
+## Examples
+
+### Adding a new feature to existing project
+
+```bash
+# 1. Analyze current state
+starforge analyze
+
+# 2. Review generated docs
+cat PROJECT_CONTEXT.md
+cat TECH_STACK.md
+cat initial-assessment.md
+
+# 3. Create breakdown
+starforge use senior-engineer
+# Provide: "Add user authentication with JWT"
+
+# 4. Monitor in separate terminal
+starforge monitor
+
+# 5. Assign work
+starforge use orchestrator
+# TPM will have created tickets already
+
+# 6. Check progress
+starforge status
+```
+
+### Starting a new iOS app
+
+```bash
+# 1. Create and initialize
+mkdir my-ios-app
+cd my-ios-app
+git init
+
+# 2. Install StarForge
+starforge install
+
+# 3. Plan with senior engineer
+starforge use senior-engineer
+# Describe your app vision
+
+# 4. Execute
+starforge use orchestrator
+```
+
+## Architecture Decisions
+
+### Why Git Worktrees?
+
+Traditional branching creates conflicts when multiple agents work simultaneously. Worktrees provide:
+- **True parallelism**: Each agent has its own working directory
+- **No branch conflicts**: Agents can't interfere with each other
+- **Shared history**: All worktrees reference the same repository
+- **Easy cleanup**: Remove worktree without affecting others
+
+### Why Trigger Files?
+
+Asynchronous communication scales better than synchronous:
+- **Non-blocking**: Agents don't wait for each other
+- **Auditable**: All handoffs are recorded
+- **Debuggable**: Easy to trace agent interactions
+- **Flexible**: Add new agents without changing protocols
+
+### Why .gitignore .claude/?
+
+StarForge agents are proprietary. Users license StarForge but don't own the agent definitions. This protects IP while allowing users to benefit from the system.
+
+## License
+
+StarForge is proprietary software. The `.claude/` folder and all agent definitions are intellectual property and must not be distributed, modified, or committed to version control.
+
+Generated code and documentation (PROJECT_CONTEXT.md, TECH_STACK.md, etc.) belong to the user.
+
+## Support
+
+For issues, questions, or feedback:
+- GitHub Issues: Create an issue in your StarForge installation
+- Documentation: See `.claude/CLAUDE.md` for agent protocols
+- Help: Run `starforge help` for quick reference
+
+## Changelog
+
+### v1.0.0 (2025-01-XX)
+- Initial release
+- 5 specialized agents (orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent)
+- Git worktree-based parallel development
+- GitHub integration
+- TDD test suites (58 installer + 38 CLI tests)
+- Interactive installation
+- Project analysis
+- Trigger monitoring
+- Status reporting
+
+---
+
+**Happy building with your AI team!** 🚀

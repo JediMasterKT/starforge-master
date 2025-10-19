@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(~/**)",
+      "Read(~/empowerai*/**)",
+      "Bash",
+      "Write(/Users/krunaaltavkar/empowerai*/**)",
+      "Write(~/empowerai*/**)",
+      "Edit(/Users/krunaaltavkar/empowerai*/**)",
+      "Edit(~/empowerai*/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~:*)",
+      "Bash(rm -rf /Users:*)",
+      "Bash(rm -rf ~/empowerai/.git:*)",
+      "Bash(git push --force origin main:*)",
+      "Bash(git reset --hard origin/main:*)",
+      "Bash(git checkout main && git reset:*)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(su:*)",
+      "Bash(chmod +x /usr/*:*)",
+      "Bash(chown:*)",
+      "Bash(kill:*)",
+      "Bash(killall:*)",
+      "Bash(shutdown:*)",
+      "Bash(reboot:*)",
+      "Bash(dd:*)",
+      "Bash(mkfs:*)",
+      "Bash(fdisk:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/krunaaltavkar/empowerai/.claude/hooks/block-main-edits.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/krunaaltavkar/empowerai/.claude/hooks/block-main-bash.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
