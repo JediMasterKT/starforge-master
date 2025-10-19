@@ -22,34 +22,46 @@ echo -e "${BLUE}🔍 StarForge CLI Verification${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Determine shell
-if [ -n "$ZSH_VERSION" ]; then
-    SHELL_NAME="zsh"
+# Determine user's actual shell
+USER_SHELL=$(basename "$SHELL")
+
+echo "Detected shell: $USER_SHELL"
+
+# Determine primary config file
+if [ "$USER_SHELL" = "zsh" ]; then
     RC_FILE="$HOME/.zshrc"
-elif [ -n "$BASH_VERSION" ]; then
-    SHELL_NAME="bash"
+elif [ "$USER_SHELL" = "bash" ]; then
     if [ -f "$HOME/.bash_profile" ]; then
         RC_FILE="$HOME/.bash_profile"
     else
         RC_FILE="$HOME/.bashrc"
     fi
 else
-    SHELL_NAME="unknown"
     RC_FILE="$HOME/.profile"
 fi
 
-echo "Detected shell: $SHELL_NAME"
-echo "Config file: $RC_FILE"
+echo "Primary config file: $RC_FILE"
 echo ""
 
 # Check 1: Is StarForge in PATH config?
 echo -e "${INFO}Checking PATH configuration..."
-if grep -q "starforge-master/bin" "$RC_FILE" 2>/dev/null; then
-    echo -e "${CHECK} StarForge found in $RC_FILE"
-    STARFORGE_PATH=$(grep "starforge-master/bin" "$RC_FILE" | head -1)
-    echo "   $STARFORGE_PATH"
-else
-    echo -e "${ERROR} StarForge NOT found in $RC_FILE"
+
+# Check all common config files
+CONFIG_FILES=("$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile")
+FOUND_IN=""
+
+for config in "${CONFIG_FILES[@]}"; do
+    if [ -f "$config" ] && grep -q "starforge-master/bin" "$config" 2>/dev/null; then
+        FOUND_IN="$config"
+        echo -e "${CHECK} StarForge found in $config"
+        STARFORGE_PATH=$(grep "starforge-master/bin" "$config" | head -1)
+        echo "   $STARFORGE_PATH"
+        break
+    fi
+done
+
+if [ -z "$FOUND_IN" ]; then
+    echo -e "${ERROR} StarForge NOT found in any shell config"
     echo ""
     echo -e "${YELLOW}To fix: Run the install-cli.sh script${NC}"
     echo "  cd ~/starforge-master"

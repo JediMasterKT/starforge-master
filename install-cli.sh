@@ -15,41 +15,66 @@ echo -e "${BLUE}🚀 Installing StarForge CLI${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Determine shell
-if [ -n "$ZSH_VERSION" ]; then
-    SHELL_NAME="zsh"
-    RC_FILE="$HOME/.zshrc"
-elif [ -n "$BASH_VERSION" ]; then
-    SHELL_NAME="bash"
+# Detect user's actual shell (not the script's shell)
+USER_SHELL=$(basename "$SHELL")
+
+echo "Detected shell: $USER_SHELL"
+echo ""
+
+# Determine which config files to update
+RC_FILES=()
+
+if [ "$USER_SHELL" = "zsh" ]; then
+    RC_FILES+=("$HOME/.zshrc")
+elif [ "$USER_SHELL" = "bash" ]; then
     if [ -f "$HOME/.bash_profile" ]; then
-        RC_FILE="$HOME/.bash_profile"
+        RC_FILES+=("$HOME/.bash_profile")
     else
-        RC_FILE="$HOME/.bashrc"
+        RC_FILES+=("$HOME/.bashrc")
     fi
 else
-    SHELL_NAME="unknown"
-    RC_FILE="$HOME/.profile"
+    # Unknown shell, add to common files that exist
+    [ -f "$HOME/.zshrc" ] && RC_FILES+=("$HOME/.zshrc")
+    [ -f "$HOME/.bashrc" ] && RC_FILES+=("$HOME/.bashrc")
+    [ -f "$HOME/.bash_profile" ] && RC_FILES+=("$HOME/.bash_profile")
 fi
 
-echo "Detected shell: $SHELL_NAME"
-echo "Config file: $RC_FILE"
-echo ""
+# Fallback: if no RC files found, use .profile
+if [ ${#RC_FILES[@]} -eq 0 ]; then
+    RC_FILES+=("$HOME/.profile")
+fi
 
 # Check if already in PATH
 if echo "$PATH" | grep -q "$STARFORGE_DIR/bin"; then
     echo -e "${GREEN}✅ StarForge already in PATH${NC}"
 else
-    # Add to PATH in shell config
-    echo "" >> "$RC_FILE"
-    echo "# StarForge CLI" >> "$RC_FILE"
-    echo "export PATH=\"$STARFORGE_DIR/bin:\$PATH\"" >> "$RC_FILE"
-
-    echo -e "${GREEN}✅ Added StarForge to PATH in $RC_FILE${NC}"
+    # Add to all relevant RC files
+    for RC_FILE in "${RC_FILES[@]}"; do
+        # Only add if not already present in this file
+        if ! grep -q "starforge-master/bin" "$RC_FILE" 2>/dev/null; then
+            echo "" >> "$RC_FILE"
+            echo "# StarForge CLI" >> "$RC_FILE"
+            echo "export PATH=\"$STARFORGE_DIR/bin:\$PATH\"" >> "$RC_FILE"
+            echo -e "${GREEN}✅ Added StarForge to PATH in $RC_FILE${NC}"
+        else
+            echo -e "${GREEN}✅ StarForge already in $RC_FILE${NC}"
+        fi
+    done
 fi
 
 echo ""
 echo -e "${YELLOW}To use StarForge immediately, run:${NC}"
-echo "  source $RC_FILE"
+if [ "$USER_SHELL" = "zsh" ]; then
+    echo "  source ~/.zshrc"
+elif [ "$USER_SHELL" = "bash" ]; then
+    if [ -f "$HOME/.bash_profile" ]; then
+        echo "  source ~/.bash_profile"
+    else
+        echo "  source ~/.bashrc"
+    fi
+else
+    echo "  source ~/.zshrc  (or your shell's config file)"
+fi
 echo ""
 echo -e "${YELLOW}Or open a new terminal${NC}"
 echo ""

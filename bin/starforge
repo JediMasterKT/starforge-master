@@ -402,7 +402,7 @@ case "$COMMAND" in
         echo "  7. Check status:   starforge status"
         echo ""
         echo -e "${GREEN}DOCUMENTATION:${NC}"
-        echo "  https://github.com/yourusername/starforge"
+        echo "  https://github.com/JediMasterKT/starforge-master"
         echo ""
         ;;
 
