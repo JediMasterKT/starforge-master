@@ -25,6 +25,82 @@ case "$COMMAND" in
         "$STARFORGE_DIR/bin/install.sh" "$@"
         ;;
 
+    update)
+        # Update StarForge agents from latest templates
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🔄 Updating StarForge Agents${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Pull latest from starforge-master repo
+        echo -e "${INFO}Pulling latest StarForge templates..."
+        cd "$STARFORGE_DIR"
+        if git pull origin main --quiet; then
+            echo -e "${CHECK} Updated starforge-master from GitHub"
+        else
+            echo -e "${WARN}Could not pull from GitHub (using local templates)"
+        fi
+        cd - > /dev/null
+
+        # Get target directory
+        TARGET_DIR="$(pwd)"
+        CLAUDE_DIR="$TARGET_DIR/.claude"
+
+        # Update agent definitions
+        echo -e "${INFO}Updating agent definitions..."
+        cp "$STARFORGE_DIR/templates/agents"/*.md "$CLAUDE_DIR/agents/"
+        echo -e "${CHECK} Updated 5 agent definitions"
+
+        # Update scripts
+        echo -e "${INFO}Updating scripts..."
+        cp "$STARFORGE_DIR/templates/scripts"/*.sh "$CLAUDE_DIR/scripts/"
+        chmod +x "$CLAUDE_DIR/scripts"/*.sh
+        echo -e "${CHECK} Updated scripts"
+
+        # Update hooks
+        echo -e "${INFO}Updating hooks..."
+        cp "$STARFORGE_DIR/templates/hooks"/*.sh "$CLAUDE_DIR/hooks/"
+        chmod +x "$CLAUDE_DIR/hooks"/*.sh
+        echo -e "${CHECK} Updated hooks"
+
+        # Update protocol files
+        echo -e "${INFO}Updating protocol files..."
+        cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+        cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
+        echo -e "${CHECK} Updated protocol files"
+
+        # Update settings with path replacement
+        echo -e "${INFO}Updating settings.json..."
+        sed "s|/Users/krunaaltavkar/empowerai|$TARGET_DIR|g" "$STARFORGE_DIR/templates/settings/settings.json" > "$CLAUDE_DIR/settings.json"
+        echo -e "${CHECK} Updated settings.json"
+
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CHECK} ${GREEN}StarForge updated successfully!${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "${YELLOW}Updated components:${NC}"
+        echo "  - 5 agent definitions (orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent)"
+        echo "  - Scripts (trigger-monitor, trigger-helpers, watch-triggers)"
+        echo "  - Hooks (block-main-edits, block-main-bash)"
+        echo "  - Protocol files (CLAUDE.md, LEARNINGS.md)"
+        echo "  - Settings (settings.json)"
+        echo ""
+        echo -e "${GREEN}Preserved:${NC}"
+        echo "  - Agent learnings (.claude/agents/agent-learnings/)"
+        echo "  - Breakdowns (.claude/breakdowns/)"
+        echo "  - Triggers (.claude/triggers/)"
+        echo "  - Coordination files (.claude/coordination/)"
+        echo "  - PROJECT_CONTEXT.md and TECH_STACK.md"
+        echo ""
+        ;;
+
     analyze)
         # Trigger Main Claude to analyze project
         if [ ! -d ".claude" ]; then
@@ -277,6 +353,10 @@ case "$COMMAND" in
         echo "    Install StarForge in the current project"
         echo "    Creates .claude/ structure, agent definitions, and git worktrees"
         echo ""
+        echo -e "  ${YELLOW}starforge update${NC}"
+        echo "    Update agents and scripts from latest templates"
+        echo "    Pulls from GitHub and refreshes .claude/ without re-setup"
+        echo ""
         echo -e "  ${YELLOW}starforge analyze${NC}"
         echo "    Analyze your project and generate documentation"
         echo "    Creates PROJECT_CONTEXT.md, TECH_STACK.md, and initial-assessment.md"
@@ -301,6 +381,9 @@ case "$COMMAND" in
         echo ""
         echo "  # Analyze an existing project"
         echo "  starforge analyze"
+        echo ""
+        echo "  # Update to latest agent definitions"
+        echo "  starforge update"
         echo ""
         echo "  # Create a breakdown for a feature"
         echo "  starforge use senior-engineer"
