@@ -1,0 +1,19 @@
+# CODEOWNERS
+#
+# This file defines code ownership for the StarForge repository.
+# All changes require approval from the repository owner.
+#
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for all files
+* @JediMasterKT
+
+# Agent definitions require extra scrutiny
+/.claude/agents/*.md @JediMasterKT
+
+# Installation scripts are critical for user onboarding
+/install.sh @JediMasterKT
+/bin/install-cli.sh @JediMasterKT
+
+# CLI wrapper is the main entry point
+/bin/starforge @JediMasterKT
