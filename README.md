@@ -345,6 +345,63 @@ starforge use senior-engineer
 starforge use orchestrator
 ```
 
+## Contributing
+
+StarForge welcomes contributions! Whether it's bug fixes, new features, or documentation improvements, your help is appreciated.
+
+### Development Workflow
+
+StarForge uses a **feature branch + pull request** workflow:
+
+1. **Fork** the repository
+2. **Create a feature branch**: `git checkout -b feature/your-feature`
+3. **Make your changes** and test thoroughly
+4. **Commit** with clear messages: `git commit -m "feat: Add feature X"`
+5. **Push** to your fork: `git push origin feature/your-feature`
+6. **Create a Pull Request** on GitHub
+
+**Important:** Never commit directly to `main`. All changes must go through PR review.
+
+### What to Contribute
+
+**High Priority:**
+- Bug fixes and issue resolutions
+- Documentation improvements
+- Test coverage additions
+- User experience enhancements
+
+**Medium Priority:**
+- New agent definitions
+- CLI command enhancements
+- Platform compatibility (Windows, Linux)
+
+**Discuss First:**
+- Breaking changes
+- Major refactors
+- New paid features
+
+### Testing Requirements
+
+All contributions must include appropriate tests:
+
+```bash
+# Test installer changes
+bash tests/test-installer.sh
+
+# Test CLI changes
+bash bin/verify-cli.sh
+```
+
+### Code Review
+
+All pull requests require approval from `@JediMasterKT` (enforced via CODEOWNERS). This ensures:
+- Consistent quality standards
+- Backward compatibility
+- Security review
+- User experience coherence
+
+For detailed contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Architecture Decisions
 
 ### Why Git Worktrees?
