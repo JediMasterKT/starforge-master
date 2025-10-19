@@ -135,7 +135,7 @@ case "$COMMAND" in
         # Launch Claude Code with the analysis prompt
         cat "$STARFORGE_DIR/templates/initial-analysis-prompt.md" | \
         sed "s|\[Will be provided when this prompt is invoked\]|$project_dir|g" | \
-        claude --prompt-file /dev/stdin
+        claude
         ;;
 
     monitor)
@@ -244,7 +244,7 @@ case "$COMMAND" in
         fi
 
         # Create invocation prompt
-        echo "Use the ${agent_name} agent." | claude --prompt-file /dev/stdin
+        echo "Use the ${agent_name} agent." | claude
         ;;
 
     status)
