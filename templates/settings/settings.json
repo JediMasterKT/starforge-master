@@ -2,18 +2,16 @@
   "permissions": {
     "allow": [
       "Read(~/**)",
-      "Read(~/empowerai*/**)",
+      "Read({{PROJECT_DIR}}/**)",
       "Bash",
-      "Write(/Users/krunaaltavkar/empowerai*/**)",
-      "Write(~/empowerai*/**)",
-      "Edit(/Users/krunaaltavkar/empowerai*/**)",
-      "Edit(~/empowerai*/**)"
+      "Write({{PROJECT_DIR}}/**)",
+      "Edit({{PROJECT_DIR}}/**)"
     ],
     "deny": [
       "Bash(rm -rf /:*)",
       "Bash(rm -rf ~:*)",
       "Bash(rm -rf /Users:*)",
-      "Bash(rm -rf ~/empowerai/.git:*)",
+      "Bash(rm -rf {{PROJECT_DIR}}/.git:*)",
       "Bash(git push --force origin main:*)",
       "Bash(git reset --hard origin/main:*)",
       "Bash(git checkout main && git reset:*)"
@@ -39,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/krunaaltavkar/empowerai/.claude/hooks/block-main-edits.sh"
+            "command": "{{PROJECT_DIR}}/.claude/hooks/block-main-edits.sh"
           }
         ]
       },
@@ -48,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/krunaaltavkar/empowerai/.claude/hooks/block-main-bash.sh"
+            "command": "{{PROJECT_DIR}}/.claude/hooks/block-main-bash.sh"
           }
         ]
       }

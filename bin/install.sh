@@ -215,8 +215,8 @@ copy_agent_files() {
     cp "$TEMPLATE_DIR/CLAUDE.md" "$CLAUDE_DIR/"
     cp "$TEMPLATE_DIR/LEARNINGS.md" "$CLAUDE_DIR/"
 
-    # Copy settings with path updates
-    sed "s|/Users/krunaaltavkar/empowerai|$TARGET_DIR|g" "$TEMPLATE_DIR/settings/settings.json" > "$CLAUDE_DIR/settings.json"
+    # Copy settings with path updates (replace {{PROJECT_DIR}} placeholder)
+    sed "s|{{PROJECT_DIR}}|$TARGET_DIR|g" "$TEMPLATE_DIR/settings/settings.json" > "$CLAUDE_DIR/settings.json"
 
     # Create empty learning files
     for agent in orchestrator senior-engineer junior-engineer qa-engineer tpm; do
