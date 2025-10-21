@@ -4,10 +4,8 @@
       "Read(~/**)",
       "Read(~/empowerai*/**)",
       "Bash",
-      "Write(/Users/krunaaltavkar/empowerai*/**)",
-      "Write(~/empowerai*/**)",
-      "Edit(/Users/krunaaltavkar/empowerai*/**)",
-      "Edit(~/empowerai*/**)"
+      "Write({{PROJECT_DIR}}*/**)",
+      "Edit({{PROJECT_DIR}}*/**)"
     ],
     "deny": [
       "Bash(rm -rf /:*)",
@@ -39,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/krunaaltavkar/empowerai/.claude/hooks/block-main-edits.sh"
+            "command": "{{PROJECT_DIR}}/.claude/hooks/block-main-edits.sh"
           }
         ]
       },
@@ -48,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/krunaaltavkar/empowerai/.claude/hooks/block-main-bash.sh"
+            "command": "{{PROJECT_DIR}}/.claude/hooks/block-main-bash.sh"
           }
         ]
       }
