@@ -82,6 +82,31 @@ check_prerequisites() {
         echo -e "   ${YELLOW}Install: brew install terminal-notifier${NC}"
     fi
 
+    # Check file watching tools (optional for trigger monitoring)
+    # fswatch (macOS) or inotifywait (Linux) required for automatic trigger monitoring
+    local has_file_watcher=false
+
+    if command -v fswatch &> /dev/null; then
+        echo -e "${CHECK} fswatch: installed"
+        has_file_watcher=true
+    else
+        echo -e "${INFO} fswatch: not found (optional for trigger monitoring)"
+        echo -e "   ${YELLOW}Install: brew install fswatch${NC}"
+    fi
+
+    if command -v inotifywait &> /dev/null; then
+        echo -e "${CHECK} inotifywait: installed"
+        has_file_watcher=true
+    else
+        echo -e "${INFO} inotifywait: not found (optional for trigger monitoring)"
+        echo -e "   ${YELLOW}Install: sudo apt-get install inotify-tools${NC}"
+    fi
+
+    if [ "$has_file_watcher" = false ]; then
+        echo -e "${WARN}No file watching tool detected (fswatch or inotifywait)"
+        echo -e "   ${YELLOW}Trigger monitoring will require manual mode${NC}"
+    fi
+
     echo ""
 
     if [ "$all_good" = false ]; then
