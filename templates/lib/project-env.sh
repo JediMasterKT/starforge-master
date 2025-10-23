@@ -44,26 +44,78 @@ else
 fi
 
 # Detect agent ID from worktree directory name
-# Expected pattern: project-name-junior-dev-{a|b|c}
+# Dynamically detects based on actual worktree configuration
+# Supports any number of agents and custom naming patterns
 detect_agent_id() {
     local current_dir
     current_dir=$(basename "$(pwd)")
 
-    # Check if directory name contains junior-dev-{a|b|c}
-    case "$current_dir" in
-        *-junior-dev-a)
-            echo "junior-dev-a"
-            ;;
-        *-junior-dev-b)
-            echo "junior-dev-b"
-            ;;
-        *-junior-dev-c)
-            echo "junior-dev-c"
-            ;;
-        *)
-            echo "main"
-            ;;
-    esac
+    # Try to extract agent ID using common patterns
+    # Pattern 1: junior-dev-{letter} (e.g., junior-dev-a, junior-dev-b, junior-dev-z)
+    if echo "$current_dir" | grep -qE 'junior-dev-[a-z]$'; then
+        echo "$current_dir" | sed -E 's/.*-(junior-dev-[a-z])$/\1/'
+        return
+    fi
+
+    # Pattern 2: dev-{number} (e.g., dev-1, dev-2, dev-10)
+    # Must have a hyphen before "dev-" to distinguish from "junior-dev-"
+    if echo "$current_dir" | grep -qE '[^-]+-dev-[0-9]+$'; then
+        echo "$current_dir" | sed -E 's/.*-(dev-[0-9]+)$/\1/'
+        return
+    fi
+
+    # Pattern 3: Check against actual git worktrees (most reliable)
+    if command -v git >/dev/null 2>&1 && [ -e ".git" ]; then
+        local current_path
+        current_path=$(pwd)
+
+        # Get all worktree paths
+        local worktrees
+        worktrees=$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | cut -d' ' -f2)
+
+        if [ -n "$worktrees" ]; then
+            # Get main repo path (first worktree)
+            local main_repo
+            main_repo=$(echo "$worktrees" | head -1)
+
+            # If we're in main repo, return "main"
+            if [ "$current_path" = "$main_repo" ]; then
+                echo "main"
+                return
+            fi
+
+            # Check each worktree to find where we are
+            while IFS= read -r worktree_path; do
+                if [ "$current_path" = "$worktree_path" ]; then
+                    # Extract the suffix after the main repo name
+                    local worktree_name
+                    worktree_name=$(basename "$worktree_path")
+
+                    # Try to extract agent ID from the worktree name
+                    # This handles any pattern: project-{agent-id}
+                    local project_base
+                    project_base=$(basename "$main_repo")
+
+                    # Remove project base to get agent ID
+                    if [ "$worktree_name" != "$project_base" ]; then
+                        # Extract everything after project_base-
+                        local agent_id
+                        agent_id=$(echo "$worktree_name" | sed "s/^${project_base}-//")
+
+                        if [ -n "$agent_id" ] && [ "$agent_id" != "$worktree_name" ]; then
+                            echo "$agent_id"
+                            return
+                        fi
+                    fi
+                fi
+            done <<EOF
+$worktrees
+EOF
+        fi
+    fi
+
+    # Default fallback: not a recognized agent worktree
+    echo "main"
 }
 
 # Helper function: is_worktree

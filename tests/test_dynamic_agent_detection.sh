@@ -72,13 +72,12 @@ echo "  templates/lib/project-env.sh"
 echo "=========================================="
 echo ""
 
-# First, let's test the CURRENT (broken) implementation
-echo "Phase 1: Testing CURRENT hardcoded implementation"
-echo "Expected: Tests 4-8 should FAIL (proves bug exists)"
+# Test the dynamic implementation
+echo "Testing dynamic agent detection implementation"
 echo "=========================================="
 echo ""
 
-# TEST 1-3: Current implementation handles a, b, c (should PASS)
+# TEST 1-3: Standard configuration
 echo "Test Group 1: Standard 3-agent configuration"
 echo "------------------------------------------"
 TEST_DIR=$(setup_test_env)
@@ -101,44 +100,42 @@ cleanup_test_env "$TEST_DIR"
 
 echo ""
 echo "Test Group 2: Extended configuration (5 agents)"
-echo "Expected: FAIL (hardcoded implementation limitation)"
 echo "------------------------------------------"
 
-# TEST 4-5: Current implementation does NOT handle d, e (should FAIL - this is the bug!)
+# TEST 4-5: Extended agent support beyond a, b, c
 TEST_DIR=$(setup_test_env)
 mkdir -p "$TEST_DIR/starforge-master-junior-dev-d"
 result=$(test_detect_agent_id "$TEST_DIR/starforge-master-junior-dev-d")
-assert_equals "junior-dev-d" "$result" "Detect junior-dev-d (should FAIL with current code)" || true
+assert_equals "junior-dev-d" "$result" "Detect junior-dev-d"
 cleanup_test_env "$TEST_DIR"
 
 TEST_DIR=$(setup_test_env)
 mkdir -p "$TEST_DIR/starforge-master-junior-dev-e"
 result=$(test_detect_agent_id "$TEST_DIR/starforge-master-junior-dev-e")
-assert_equals "junior-dev-e" "$result" "Detect junior-dev-e (should FAIL with current code)" || true
+assert_equals "junior-dev-e" "$result" "Detect junior-dev-e"
 cleanup_test_env "$TEST_DIR"
 
 echo ""
 echo "Test Group 3: Custom naming pattern"
-echo "Expected: FAIL (hardcoded implementation limitation)"
 echo "------------------------------------------"
 
-# TEST 6-8: Custom naming should FAIL with current implementation
+# TEST 6-8: Custom naming pattern support
 TEST_DIR=$(setup_test_env)
 mkdir -p "$TEST_DIR/myproject-dev-1"
 result=$(test_detect_agent_id "$TEST_DIR/myproject-dev-1")
-assert_equals "dev-1" "$result" "Detect dev-1 (should FAIL with current code)" || true
+assert_equals "dev-1" "$result" "Detect dev-1 (custom)"
 cleanup_test_env "$TEST_DIR"
 
 TEST_DIR=$(setup_test_env)
 mkdir -p "$TEST_DIR/myproject-dev-2"
 result=$(test_detect_agent_id "$TEST_DIR/myproject-dev-2")
-assert_equals "dev-2" "$result" "Detect dev-2 (should FAIL with current code)" || true
+assert_equals "dev-2" "$result" "Detect dev-2 (custom)"
 cleanup_test_env "$TEST_DIR"
 
 TEST_DIR=$(setup_test_env)
 mkdir -p "$TEST_DIR/myproject-dev-10"
 result=$(test_detect_agent_id "$TEST_DIR/myproject-dev-10")
-assert_equals "dev-10" "$result" "Detect dev-10 (should FAIL with current code)" || true
+assert_equals "dev-10" "$result" "Detect dev-10 (custom)"
 cleanup_test_env "$TEST_DIR"
 
 echo ""
@@ -184,14 +181,14 @@ echo -e "${GREEN}Passed: $TESTS_PASSED${NC}"
 if [ $TESTS_FAILED -gt 0 ]; then
     echo -e "${RED}Failed: $TESTS_FAILED${NC}"
     echo ""
-    echo -e "${YELLOW}This is EXPECTED. These failures demonstrate the bug.${NC}"
-    echo "The hardcoded implementation fails for:"
-    echo "  - Agents beyond a, b, c (e.g., d, e)"
-    echo "  - Custom naming patterns (e.g., dev-1, dev-2)"
-    echo ""
-    echo "Next: Implement dynamic detection to fix these failures."
+    echo "FAIL: Dynamic agent detection is broken."
     exit 1
 else
     echo -e "${GREEN}All tests passed!${NC}"
+    echo ""
+    echo "Dynamic agent detection successfully supports:"
+    echo "  - Any number of agents (a, b, c, d, e, ...)"
+    echo "  - Custom naming patterns (dev-1, dev-2, dev-10, ...)"
+    echo "  - Main repo detection"
     exit 0
 fi
