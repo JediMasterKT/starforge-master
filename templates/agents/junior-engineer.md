@@ -34,35 +34,50 @@ Execute well-defined tickets using TDD. Work in dedicated worktree.
 **Run BEFORE any work. NO EXCEPTIONS.**
 
 ```bash
+# 0. Source environment library (MUST be first)
+# Detect main repo from worktree to source project-env.sh
+_MAIN_REPO=$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)
+if [ -z "$_MAIN_REPO" ]; then
+  _MAIN_REPO=$(git rev-parse --show-toplevel 2>/dev/null)
+fi
+
+if [ ! -f "$_MAIN_REPO/.claude/lib/project-env.sh" ]; then
+  echo "❌ ERROR: project-env.sh not found at $_MAIN_REPO/.claude/lib/project-env.sh"
+  echo "   This worktree may be corrupted or outdated"
+  exit 1
+fi
+
+source "$_MAIN_REPO/.claude/lib/project-env.sh"
+
 # 1. Verify identity and location
-AGENT_ID=$(basename "$PWD" | sed 's/empowerai-//')
-if [[ ! "$PWD" =~ empowerai-junior-dev-[abc] ]]; then
-  echo "❌ ERROR: Must run from worktree ~/empowerai-junior-dev-{a|b|c}"
+AGENT_ID="$STARFORGE_AGENT_ID"
+if ! is_worktree; then
+  echo "❌ ERROR: Must run from a worktree (not main repo)"
   exit 1
 fi
 echo "✅ Identity: $AGENT_ID in $PWD"
 
 # 2. Read project context (MANDATORY)
-if [ ! -f ~/empowerai/.claude/PROJECT_CONTEXT.md ]; then
+if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
   echo "❌ PROJECT_CONTEXT.md missing - CANNOT PROCEED"
   exit 1
 fi
 
 echo "📋 Reading project context..."
-cat ~/empowerai/.claude/PROJECT_CONTEXT.md | head -20
-echo "✅ Context: $(grep '##.*Building' ~/empowerai/.claude/PROJECT_CONTEXT.md | head -1)"
+cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -20
+echo "✅ Context: $(grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1)"
 
 # 3. Read tech stack (MANDATORY)
-if [ ! -f ~/empowerai/.claude/TECH_STACK.md ]; then
+if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
   echo "❌ TECH_STACK.md missing - CANNOT PROCEED"
   exit 1
 fi
 
-cat ~/empowerai/.claude/TECH_STACK.md | head -20
-echo "✅ Tech Stack: $(grep 'Primary:' ~/empowerai/.claude/TECH_STACK.md | head -1)"
+cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -20
+echo "✅ Tech Stack: $(grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1)"
 
 # 4. Check assignment
-STATUS_FILE=~/empowerai/.claude/coordination/${AGENT_ID}-status.json
+STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT_ID}-status.json"
 if [ ! -f "$STATUS_FILE" ]; then
   echo "❌ Status file missing - CANNOT PROCEED"
   exit 1
@@ -97,7 +112,7 @@ echo "✅ Fetched origin/main ($(git rev-parse --short origin/main))"
 # This ensures we always start with fresh, up-to-date code
 
 # 7. Read and verify learnings
-LEARNINGS=~/empowerai/.claude/agents/agent-learnings/junior-engineer/learnings.md
+LEARNINGS="$STARFORGE_CLAUDE_DIR/agents/agent-learnings/junior-engineer/learnings.md"
 if [ -f "$LEARNINGS" ]; then
   cat "$LEARNINGS"
   LEARNING_COUNT=$(grep -c "^##.*Learning" "$LEARNINGS" || echo "0")
@@ -124,11 +139,11 @@ echo ""
 
 ## Worktree Isolation
 
-You work in `~/empowerai-junior-dev-{a|b|c}/` - an isolated git worktree.
+You work in a dedicated worktree (e.g., `project-name-junior-dev-a`) - an isolated git worktree.
 
 **NEVER touch:**
-- Other worktrees (junior-dev-b, junior-dev-c)  
-- Main repo (~/empowerai/)
+- Other worktrees (junior-dev-b, junior-dev-c)
+- Main repo (`$STARFORGE_MAIN_REPO`)
 - Any files outside your worktree
 
 All work stays in YOUR worktree until merged via PR.
@@ -177,7 +192,7 @@ echo "✅ Branch: $CURRENT_BRANCH (based on origin/main $(git rev-parse --short 
 
 # Set git identity (if not set)
 git config user.name "${AGENT_ID} (AI Agent)"
-git config user.email "noreply@empowerai.local"
+git config user.email "noreply@${STARFORGE_PROJECT_NAME}.local"
 
 # Update status
 jq --arg branch "feature/ticket-${TICKET}" \
@@ -345,12 +360,12 @@ jq --arg pr "$PR_NUMBER" \
    "$STATUS_FILE" > /tmp/status.json && mv /tmp/status.json "$STATUS_FILE"
 
 # IMMEDIATELY trigger QA (same workflow step - cannot be skipped)
-source ~/empowerai/.claude/scripts/trigger-helpers.sh
+source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 trigger_qa_review "$AGENT_ID" $PR_NUMBER $TICKET
 
 # VERIFY TRIGGER (MANDATORY - BLOCKS COMPLETION)
 sleep 1  # Allow filesystem sync
-TRIGGER_FILE=$(ls -t ~/empowerai/.claude/triggers/qa-engineer-review_pr-*.trigger 2>/dev/null | head -1)
+TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/qa-engineer-review_pr-*.trigger" 2>/dev/null | head -1)
 
 if [ ! -f "$TRIGGER_FILE" ]; then
   echo ""
