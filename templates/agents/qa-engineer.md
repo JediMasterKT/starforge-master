@@ -28,27 +28,37 @@ Ensure production quality. Junior-devs write unit tests (TDD), you validate inte
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 1. Verify location
-if [[ ! "$PWD" =~ /empowerai$ ]]; then
-  echo "❌ Must run from main repo ~/empowerai"
+# 0. Source project environment detection
+if [ -f .claude/lib/project-env.sh ]; then
+  source .claude/lib/project-env.sh
+elif [ -f lib/project-env.sh ]; then
+  source lib/project-env.sh
+else
+  echo "❌ project-env.sh not found"
   exit 1
 fi
-echo "✅ Location: Main repository"
+
+# 1. Verify location
+if is_worktree; then
+  echo "❌ Must run from main repo $STARFORGE_MAIN_REPO"
+  exit 1
+fi
+echo "✅ Location: Main repository ($STARFORGE_PROJECT_NAME)"
 
 # 2. Read project context
-if [ ! -f .claude/PROJECT_CONTEXT.md ]; then
+if [ ! -f $STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md ]; then
   echo "❌ PROJECT_CONTEXT.md missing"
   exit 1
 fi
-cat .claude/PROJECT_CONTEXT.md | head -15
-echo "✅ Context: $(grep '##.*Building' .claude/PROJECT_CONTEXT.md | head -1)"
+cat $STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md | head -15
+echo "✅ Context: $(grep '##.*Building' $STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md | head -1)"
 
 # 3. Read tech stack (for test commands)
-if [ ! -f .claude/TECH_STACK.md ]; then
+if [ ! -f $STARFORGE_CLAUDE_DIR/TECH_STACK.md ]; then
   echo "❌ TECH_STACK.md missing"
   exit 1
 fi
-TEST_CMD=$(grep 'Command:' .claude/TECH_STACK.md | head -1 | cut -d'`' -f2)
+TEST_CMD=$(grep 'Command:' $STARFORGE_CLAUDE_DIR/TECH_STACK.md | head -1 | cut -d'`' -f2)
 echo "✅ Tech Stack: Test command: $TEST_CMD"
 
 # 4. Check GitHub connection
@@ -64,7 +74,7 @@ PENDING=$(gh pr list --label "needs-review" --json number | jq length)
 echo "✅ PRs pending review: $PENDING"
 
 # 6. Read learnings
-LEARNINGS=.claude/agents/agent-learnings/qa-engineer/learnings.md
+LEARNINGS=$STARFORGE_CLAUDE_DIR/agents/agent-learnings/qa-engineer/learnings.md
 if [ -f "$LEARNINGS" ]; then
   cat "$LEARNINGS"
   echo "✅ Learnings reviewed"
@@ -370,19 +380,19 @@ REPORT
   echo "✅ Updated PR labels: needs-review → qa-approved"
 
   echo "✅ PR #$PR_NUMBER APPROVED (orchestrator/human will merge)"
-  
+
   # IMMEDIATELY create trigger (atomic with approval - cannot be skipped)
-  source .claude/scripts/trigger-helpers.sh
-  
+  source $STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh
+
   # Get list of recently completed tickets
   COMPLETED_TICKETS="[$TICKET]"
   COUNT=1
-  
+
   trigger_next_assignment $COUNT "$COMPLETED_TICKETS"
-  
+
   # VERIFY TRIGGER (Upgrade to Level 4)
   sleep 1  # Allow filesystem sync
-  TRIGGER_FILE=$(ls -t .claude/triggers/orchestrator-assign_next_work-*.trigger 2>/dev/null | head -1)
+  TRIGGER_FILE=$(ls -t $STARFORGE_CLAUDE_DIR/triggers/orchestrator-assign_next_work-*.trigger 2>/dev/null | head -1)
   
   if [ ! -f "$TRIGGER_FILE" ]; then
     echo ""
