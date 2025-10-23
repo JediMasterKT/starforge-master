@@ -341,6 +341,160 @@ case "$COMMAND" in
         fi
         ;;
 
+    logs)
+        # View and manage logs
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Source logger library
+        if [ -f "$STARFORGE_DIR/templates/lib/logger.sh" ]; then
+            source "$STARFORGE_DIR/templates/lib/logger.sh"
+        else
+            echo -e "${RED}❌ Logger library not found${NC}"
+            exit 1
+        fi
+
+        # Get subcommand
+        SUBCOMMAND="${1:-recent}"
+        shift || true
+
+        case "$SUBCOMMAND" in
+            recent)
+                # Show recent log entries
+                COUNT="${1:-50}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}📋 Recent Log Entries (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_recent_logs "$COUNT" || echo "No logs found"
+                ;;
+
+            errors)
+                # Show error logs only
+                COUNT="${1:-50}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${RED}❌ Error Logs (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_error_logs "$COUNT" || echo "No error logs found"
+                ;;
+
+            warnings)
+                # Show warning logs only
+                COUNT="${1:-50}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${YELLOW}⚠️  Warning Logs (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_warning_logs "$COUNT" || echo "No warning logs found"
+                ;;
+
+            component)
+                # Show logs for specific component
+                COMPONENT="$1"
+                COUNT="${2:-50}"
+
+                if [ -z "$COMPONENT" ]; then
+                    echo -e "${RED}❌ Please specify a component${NC}"
+                    echo ""
+                    echo "Usage: starforge logs component <name> [count]"
+                    echo ""
+                    echo "Examples:"
+                    echo "  starforge logs component orchestrator"
+                    echo "  starforge logs component junior-dev-a 100"
+                    exit 1
+                fi
+
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}📋 Logs for component: $COMPONENT (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_component_logs "$COMPONENT" "$COUNT" || echo "No logs found for component: $COMPONENT"
+                ;;
+
+            rotate)
+                # Rotate logs
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}🔄 Rotating Logs${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo "Keeping logs from last ${LOG_RETENTION_DAYS:-7} days..."
+                rotate_logs
+                echo -e "${GREEN}✓ Logs rotated successfully${NC}"
+                ;;
+
+            clear)
+                # Clear logs
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${YELLOW}⚠️  Clearing Logs${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                read -p "Are you sure you want to clear all logs? [y/N] " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    clear_logs
+                    echo -e "${GREEN}✓ Logs cleared${NC}"
+                else
+                    echo "Cancelled"
+                fi
+                ;;
+
+            help)
+                # Show logs help
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}📋 StarForge Logs Commands${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "${GREEN}USAGE:${NC}"
+                echo "  starforge logs [command] [options]"
+                echo ""
+                echo -e "${GREEN}COMMANDS:${NC}"
+                echo ""
+                echo -e "  ${YELLOW}recent [count]${NC}"
+                echo "    Show recent log entries (default: 50)"
+                echo "    Example: starforge logs recent 100"
+                echo ""
+                echo -e "  ${YELLOW}errors [count]${NC}"
+                echo "    Show error logs only (default: 50)"
+                echo "    Example: starforge logs errors 20"
+                echo ""
+                echo -e "  ${YELLOW}warnings [count]${NC}"
+                echo "    Show warning logs only (default: 50)"
+                echo "    Example: starforge logs warnings 20"
+                echo ""
+                echo -e "  ${YELLOW}component <name> [count]${NC}"
+                echo "    Show logs for specific component (default: 50)"
+                echo "    Example: starforge logs component orchestrator"
+                echo ""
+                echo -e "  ${YELLOW}rotate${NC}"
+                echo "    Rotate logs (keep last 7 days)"
+                echo "    Example: starforge logs rotate"
+                echo ""
+                echo -e "  ${YELLOW}clear${NC}"
+                echo "    Clear all logs (with confirmation)"
+                echo "    Example: starforge logs clear"
+                echo ""
+                echo -e "  ${YELLOW}help${NC}"
+                echo "    Show this help message"
+                echo ""
+                echo -e "${GREEN}LOG FORMAT:${NC}"
+                echo "  [timestamp] [level] [component] message"
+                echo "  Example: [2025-10-23T07:46:44Z] [INFO] [orchestrator] Assigned ticket #42"
+                echo ""
+                ;;
+
+            *)
+                echo -e "${RED}❌ Unknown logs subcommand: $SUBCOMMAND${NC}"
+                echo ""
+                echo "Run 'starforge logs help' for available commands"
+                exit 1
+                ;;
+        esac
+        ;;
+
     help|--help|-h)
         # Show help
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
