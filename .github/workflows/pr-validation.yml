@@ -1,0 +1,71 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up dependencies
+        run: |
+          # Install required tools
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Install GitHub CLI
+        run: |
+          # Install gh CLI for testing
+          type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)
+          sudo mkdir -p -m 755 /etc/apt/keyrings
+          wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+          sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
+
+      - name: Make test scripts executable
+        run: |
+          chmod +x bin/test-install.sh
+          chmod +x bin/test-cli.sh
+
+      - name: Run installation tests
+        id: test-install
+        run: |
+          set -o pipefail
+          bin/test-install.sh 2>&1 | tee test-install-output.log
+        continue-on-error: false
+
+      - name: Run CLI tests
+        id: test-cli
+        run: |
+          set -o pipefail
+          bin/test-cli.sh 2>&1 | tee test-cli-output.log
+        continue-on-error: false
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-install-output.log
+            test-cli-output.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Check test results
+        if: always()
+        run: |
+          if [ "${{ steps.test-install.outcome }}" != "success" ] || [ "${{ steps.test-cli.outcome }}" != "success" ]; then
+            echo "Tests failed! Check the artifacts for details."
+            exit 1
+          fi
+          echo "All tests passed!"
