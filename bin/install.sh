@@ -288,6 +288,37 @@ EOF
     echo -e "   - qa-engineer, tpm-agent"
 }
 
+# Function to create version file
+create_version_file() {
+    echo -e "${INFO}Creating version tracking file..."
+
+    # Get version from template or default to 1.0.0
+    local version="1.0.0"
+    if [ -f "$TEMPLATE_DIR/VERSION" ]; then
+        version=$(jq -r '.version' "$TEMPLATE_DIR/VERSION" 2>/dev/null || echo "1.0.0")
+    fi
+
+    # Get current git commit from starforge-master repo
+    local commit=$(cd "$STARFORGE_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+    # Create version file with metadata
+    cat > "$CLAUDE_DIR/STARFORGE_VERSION" << VEOF
+{
+  "version": "$version",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "template_commit": "$commit",
+  "components": {
+    "agents": {"version": "$version"},
+    "scripts": {"version": "$version"},
+    "hooks": {"version": "$version"},
+    "settings": {"version": "$version"}
+  }
+}
+VEOF
+
+    echo -e "${CHECK} Created version file (v$version)"
+}
+
 # Function to configure worktrees
 configure_worktrees() {
     echo ""
@@ -409,6 +440,7 @@ main() {
 
     create_structure
     copy_agent_files
+    create_version_file
 
     if [ "$HAS_GIT" = true ]; then
         configure_worktrees
