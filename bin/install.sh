@@ -221,6 +221,40 @@ create_structure() {
     echo -e "${CHECK} Created directory structure"
 }
 
+# Function to create queue infrastructure
+create_queue_structure() {
+    echo -e "${INFO}Creating queue infrastructure..."
+
+    # Define all agents
+    local agents=(
+        "tpm"
+        "senior-engineer"
+        "orchestrator"
+        "qa-engineer"
+        "junior-dev-a"
+        "junior-dev-b"
+        "junior-dev-c"
+    )
+
+    # Define queue subdirectories
+    local queue_subdirs=(
+        "pending"
+        "processing"
+        "completed"
+        "failed"
+        "logs"
+    )
+
+    # Create queue directories for each agent
+    for agent in "${agents[@]}"; do
+        for subdir in "${queue_subdirs[@]}"; do
+            mkdir -p "$CLAUDE_DIR/queues/$agent/$subdir"
+        done
+    done
+
+    echo -e "${CHECK} Created queue structure for 7 agents"
+}
+
 # Function to copy agent files
 copy_agent_files() {
     echo -e "${INFO}Installing agent definitions..."
@@ -377,6 +411,17 @@ update_gitignore() {
         echo -e "${CHECK} Created .gitignore with .claude/"
     fi
 
+    # Add queue-specific exclusions
+    if ! grep -q ".claude/queues/.*/completed/" ".gitignore" 2>/dev/null; then
+        echo "" >> ".gitignore"
+        echo "# Queue system - exclude completed tasks and logs" >> ".gitignore"
+        echo ".claude/queues/*/completed/" >> ".gitignore"
+        echo ".claude/queues/*/logs/" >> ".gitignore"
+        echo -e "${CHECK} Added queue exclusions to .gitignore"
+    else
+        echo -e "${CHECK} Queue exclusions already in .gitignore"
+    fi
+
     echo ""
     echo -e "${WARN} ${YELLOW}IMPORTANT: .claude/ is StarForge intellectual property${NC}"
     echo -e "   - Never commit to git"
@@ -408,6 +453,7 @@ main() {
     fi
 
     create_structure
+    create_queue_structure
     copy_agent_files
 
     if [ "$HAS_GIT" = true ]; then
