@@ -85,6 +85,10 @@ Installs StarForge in the current project. Creates:
 - Git installed
 - GitHub CLI (`gh`) installed and authenticated
 - `jq` installed for JSON processing
+- **File watching tool (optional, for automatic trigger monitoring):**
+  - macOS: `fswatch` - Install with `brew install fswatch`
+  - Linux: `inotifywait` - Install with `sudo apt-get install inotify-tools`
+  - Note: If not installed, trigger monitoring will require manual mode
 
 ### `starforge analyze`
 
@@ -107,6 +111,11 @@ starforge use tpm-agent
 ### `starforge monitor`
 
 Starts the trigger monitor to watch agent handoffs in real-time. Run in a separate terminal.
+
+**File Watching:**
+- Requires `fswatch` (macOS) or `inotifywait` (Linux) for automatic file watching
+- Falls back to manual mode if not available
+- See installation instructions in Prerequisites section
 
 ### `starforge status`
 
