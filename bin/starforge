@@ -12,8 +12,81 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Icons
+CHECK="✅"
+WARN="⚠️ "
+INFO="ℹ️ "
+
 # Get StarForge installation directory
 STARFORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Backup functions
+create_backup() {
+    local claude_dir="$1"
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local backup_dir="$claude_dir/backups/update-$timestamp"
+
+    echo -e "${INFO}Creating backup..."
+
+    # Create backup directory structure
+    mkdir -p "$backup_dir"/{agents,scripts,hooks}
+
+    # Backup files that will be replaced
+    cp "$claude_dir/agents"/*.md "$backup_dir/agents/" 2>/dev/null || true
+    cp "$claude_dir/scripts"/*.sh "$backup_dir/scripts/" 2>/dev/null || true
+    cp "$claude_dir/hooks"/*.sh "$backup_dir/hooks/" 2>/dev/null || true
+    cp "$claude_dir/settings.json" "$backup_dir/" 2>/dev/null || true
+    cp "$claude_dir/CLAUDE.md" "$backup_dir/" 2>/dev/null || true
+    cp "$claude_dir/LEARNINGS.md" "$backup_dir/" 2>/dev/null || true
+    cp "$claude_dir/STARFORGE_VERSION" "$backup_dir/" 2>/dev/null || true
+
+    # Count backed up files
+    local files_count=$(find "$backup_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+    # Get pre-update version
+    local pre_version="unknown"
+    if [ -f "$claude_dir/STARFORGE_VERSION" ]; then
+        pre_version=$(jq -r '.version // "unknown"' "$claude_dir/STARFORGE_VERSION" 2>/dev/null || echo "unknown")
+    fi
+
+    # Create manifest
+    cat > "$backup_dir/manifest.json" << MEOF
+{
+  "backup_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "pre_update_version": "$pre_version",
+  "files_backed_up": $files_count
+}
+MEOF
+
+    # Store backup path
+    echo "$backup_dir" > "$claude_dir/.last-backup"
+
+    echo -e "${CHECK} Backup created: update-$timestamp ($files_count files)"
+
+    # Cleanup old backups
+    cleanup_old_backups "$claude_dir"
+}
+
+cleanup_old_backups() {
+    local claude_dir="$1"
+    local backup_base="$claude_dir/backups"
+
+    # Keep only the last 5 backups
+    if [ -d "$backup_base" ]; then
+        local backup_count=$(find "$backup_base" -maxdepth 1 -type d -name "update-*" 2>/dev/null | wc -l | tr -d ' ')
+
+        if [ "$backup_count" -gt 5 ]; then
+            # Remove oldest backups, keep newest 5
+            find "$backup_base" -maxdepth 1 -type d -name "update-*" -print0 2>/dev/null | \
+                xargs -0 ls -td 2>/dev/null | \
+                tail -n +6 | \
+                xargs rm -rf 2>/dev/null || true
+
+            local removed=$((backup_count - 5))
+            echo -e "${INFO}Cleaned up $removed old backup(s)"
+        fi
+    fi
+}
 
 # Command dispatcher
 COMMAND="${1:-help}"
@@ -51,6 +124,9 @@ case "$COMMAND" in
         # Get target directory
         TARGET_DIR="$(pwd)"
         CLAUDE_DIR="$TARGET_DIR/.claude"
+
+        # Create backup BEFORE any file overwrites
+        create_backup "$CLAUDE_DIR"
 
         # Update agent definitions
         echo -e "${INFO}Updating agent definitions..."
