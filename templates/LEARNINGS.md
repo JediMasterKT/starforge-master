@@ -1,6 +1,6 @@
 # Global Agent Learnings
 
-Cross-cutting learnings that apply to all agents working on the empowerai project.
+Cross-cutting learnings that apply to all agents working on this project.
 
 ---
 
