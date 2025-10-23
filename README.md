@@ -253,6 +253,22 @@ StarForge is zero-configuration by default. Advanced users can modify:
 - `.claude/agents/agent-learnings/`: Project-specific knowledge
 - Number of junior-devs during installation (1-5)
 
+### Agent Detection
+
+StarForge uses **dynamic agent detection** that automatically adapts to your configuration:
+
+- **Supports unlimited agents**: Not limited to 3 agents - use 1, 2, 5, 10, or more
+- **Flexible naming patterns**:
+  - Standard: `project-junior-dev-a`, `project-junior-dev-b`, ... `project-junior-dev-z`
+  - Custom numbers: `project-dev-1`, `project-dev-2`, ... `project-dev-10`
+- **Automatic detection**: Reads from git worktree configuration
+- **No hardcoded limits**: Add as many agents as your workflow needs
+
+The system detects agent identity by:
+1. Pattern matching directory names (junior-dev-{letter} or dev-{number})
+2. Verifying against actual git worktrees
+3. Falling back to "main" for non-agent directories
+
 ## Important Notes
 
 ### StarForge IP
@@ -275,11 +291,22 @@ git worktree list
 git worktree remove <path>
 ```
 
-To add more:
+To add more agents beyond the initial installation:
 ```bash
-# Example: Add 4th junior-dev
+# Add 4th agent (standard naming)
 git worktree add ../my-project-junior-dev-d -b worktree-d main
+
+# Add 5th agent (standard naming)
+git worktree add ../my-project-junior-dev-e -b worktree-e main
+
+# Add custom-named agents (also supported)
+git worktree add ../my-project-dev-1 -b dev-1 main
+git worktree add ../my-project-dev-2 -b dev-2 main
 ```
+
+**Note**: Dynamic agent detection will automatically recognize any agent worktree following these patterns:
+- `{project}-junior-dev-{letter}` (e.g., a, b, c, d, e, ... z)
+- `{project}-dev-{number}` (e.g., 1, 2, 3, ... 10, 11, ...)
 
 ## Troubleshooting
 
