@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "components": {
+    "agents": {"version": "1.0.0"},
+    "scripts": {"version": "1.0.0"},
+    "hooks": {"version": "1.0.0"},
+    "settings": {"version": "1.0.0"}
+  }
+}
