@@ -12,27 +12,30 @@ Analyze requirements, design solutions, create implementable subtasks with test 
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
+# 0. Source project environment
+source templates/lib/project-env.sh
+
 # 1. Verify location (main repo)
-if [[ ! "$PWD" =~ /empowerai$ ]]; then
-  echo "❌ Must run from main repo ~/empowerai"
+if [[ "$PWD" != "$STARFORGE_MAIN_REPO" ]]; then
+  echo "❌ Must run from main repo $STARFORGE_MAIN_REPO"
   exit 1
 fi
-echo "✅ Location: Main repository"
+echo "✅ Location: Main repository ($STARFORGE_PROJECT_NAME)"
 
 # 2. Read project context
-if [ ! -f .claude/PROJECT_CONTEXT.md ]; then
+if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
   echo "❌ PROJECT_CONTEXT.md missing"
   exit 1
 fi
-cat .claude/PROJECT_CONTEXT.md | head -15
-echo "✅ Context: $(grep '##.*Building' .claude/PROJECT_CONTEXT.md | head -1)"
+cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
+echo "✅ Context: $(grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1)"
 
 # 3. Read tech stack
-if [ ! -f .claude/TECH_STACK.md ]; then
+if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
   echo "❌ TECH_STACK.md missing"
   exit 1
 fi
-echo "✅ Tech Stack: $(grep 'Primary:' .claude/TECH_STACK.md | head -1)"
+echo "✅ Tech Stack: $(grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1)"
 
 # 4. Check GitHub authentication
 gh auth status > /dev/null 2>&1
@@ -43,7 +46,7 @@ fi
 echo "✅ GitHub: Connected"
 
 # 5. Read learnings
-LEARNINGS=.claude/agents/agent-learnings/senior-engineer/learnings.md
+LEARNINGS="$STARFORGE_CLAUDE_DIR/agents/agent-learnings/senior-engineer/learnings.md"
 if [ -f "$LEARNINGS" ]; then
   cat "$LEARNINGS"
   echo "✅ Learnings reviewed"
@@ -60,16 +63,16 @@ echo ""
 
 ## Your Working Location (Spike Analysis)
 
-**Work in main repo:** `~/empowerai/`
+**Work in main repo:** `$STARFORGE_MAIN_REPO`
 
 **MUST create spike folder for each analysis:**
 ```bash
-cd ~/empowerai
+cd "$STARFORGE_MAIN_REPO"
 SPIKE_ID="spike-$(date +%Y%m%d-%H%M)-feature-name"
-mkdir -p .claude/spikes/$SPIKE_ID
+mkdir -p "$STARFORGE_CLAUDE_DIR/spikes/$SPIKE_ID"
 
 # Create breakdown (always this filename)
-cat > .claude/spikes/$SPIKE_ID/breakdown.md <<'EOF'
+cat > "$STARFORGE_CLAUDE_DIR/spikes/$SPIKE_ID/breakdown.md" <<'EOF'
 # Task Breakdown: Feature Name
 ...your analysis...
 EOF
@@ -79,7 +82,7 @@ EOF
 - ALWAYS create new spike folder per analysis
 - Use date-based naming: `spike-YYYYMMDD-HHMM-feature-name`
 - ALWAYS use filename `breakdown.md` inside spike folder
-- NEVER commit spikes (`.claude/spikes/` gitignored)
+- NEVER commit spikes (`$STARFORGE_CLAUDE_DIR/spikes/` gitignored)
 
 ## Core Process
 
@@ -658,9 +661,9 @@ UI render: <1s
 
 ```bash
 # Verify breakdown exists
-cd ~/empowerai
-SPIKE_DIR=$(ls -td .claude/spikes/spike-* | head -1)
-BREAKDOWN_PATH="$HOME/empowerai/$SPIKE_DIR/breakdown.md"
+cd "$STARFORGE_MAIN_REPO"
+SPIKE_DIR=$(ls -td "$STARFORGE_CLAUDE_DIR/spikes/spike-"* | head -1)
+BREAKDOWN_PATH="$SPIKE_DIR/breakdown.md"
 
 if [[ ! -f "$BREAKDOWN_PATH" ]]; then
     echo "❌ ERROR: Breakdown not found at $BREAKDOWN_PATH"
@@ -668,8 +671,8 @@ if [[ ! -f "$BREAKDOWN_PATH" ]]; then
 fi
 
 # Extract metadata
-FEATURE_NAME=$(grep "^# Task Breakdown:" $BREAKDOWN_PATH | sed 's/# Task Breakdown: //')
-SUBTASK_COUNT=$(grep -c "^### Subtask" $BREAKDOWN_PATH)
+FEATURE_NAME=$(grep "^# Task Breakdown:" "$BREAKDOWN_PATH" | sed 's/# Task Breakdown: //')
+SUBTASK_COUNT=$(grep -c "^### Subtask" "$BREAKDOWN_PATH")
 
 echo "✅ Breakdown complete:"
 echo "   Feature: $FEATURE_NAME"
@@ -677,7 +680,7 @@ echo "   Subtasks: $SUBTASK_COUNT"
 echo "   Path: $BREAKDOWN_PATH"
 
 # Trigger TPM
-source .claude/scripts/trigger-helpers.sh
+source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 trigger_create_tickets "$FEATURE_NAME" $SUBTASK_COUNT "$BREAKDOWN_PATH"
 
 # Verify trigger created
@@ -731,7 +734,7 @@ fi
 ```bash
 # After writing breakdown to file
 FEATURE_NAME="your-feature"  # Set from context
-BREAKDOWN_FILE=".claude/spikes/${FEATURE_NAME}/breakdown.md"
+BREAKDOWN_FILE="$STARFORGE_CLAUDE_DIR/spikes/${FEATURE_NAME}/breakdown.md"
 
 # Verify breakdown has content
 if [ ! -f "$BREAKDOWN_FILE" ]; then
@@ -749,12 +752,12 @@ fi
 echo "✅ Breakdown complete: $SUBTASK_COUNT subtasks"
 
 # IMMEDIATELY trigger TPM (atomic operation - cannot be skipped)
-source .claude/scripts/trigger-helpers.sh
+source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 trigger_create_tickets "$FEATURE_NAME" $SUBTASK_COUNT "$BREAKDOWN_FILE"
 
 # VERIFY TRIGGER (Upgrade to Level 4)
 sleep 1  # Allow filesystem sync
-TRIGGER_FILE=$(ls -t .claude/triggers/tpm-create_tickets-*.trigger 2>/dev/null | head -1)
+TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/tpm-create_tickets-"*.trigger 2>/dev/null | head -1)
 
 if [ ! -f "$TRIGGER_FILE" ]; then
   echo ""
