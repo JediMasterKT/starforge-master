@@ -1,7 +1,19 @@
 #!/bin/bash
 # Watches for agent triggers and notifies human using fswatch
 
-TRIGGER_DIR=".claude/triggers"
+# Source project environment detection
+# Try current directory first, then fallback to main repo
+if [ -f ".claude/lib/project-env.sh" ]; then
+  source .claude/lib/project-env.sh
+elif [ -f "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh" ]; then
+  source "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh"
+else
+  echo "ERROR: project-env.sh not found. Run 'starforge install' first."
+  exit 1
+fi
+
+# Use environment variables from project-env.sh
+TRIGGER_DIR="$STARFORGE_CLAUDE_DIR/triggers"
 
 echo "👀 Watching for agent triggers (using fswatch)..."
 echo "Press Ctrl+C to stop"

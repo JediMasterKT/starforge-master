@@ -1,12 +1,23 @@
 #!/bin/bash
 # Event-Driven Trigger Monitor - Uses fswatch for instant detection
-# Location: ~/empowerai/.claude/scripts/trigger-monitor.sh
 # Requires: fswatch (brew install fswatch)
 
-TRIGGER_DIR=".claude/triggers"
-PROCESSED_DIR=".claude/triggers/processed"
-LOG_FILE=".claude/trigger-monitor.log"
-SEEN_FILE=".claude/.trigger-monitor-seen"
+# Source project environment detection
+# Try current directory first, then fallback to main repo
+if [ -f ".claude/lib/project-env.sh" ]; then
+  source .claude/lib/project-env.sh
+elif [ -f "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh" ]; then
+  source "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh"
+else
+  echo "ERROR: project-env.sh not found. Run 'starforge install' first."
+  exit 1
+fi
+
+# Use environment variables from project-env.sh
+TRIGGER_DIR="$STARFORGE_CLAUDE_DIR/triggers"
+PROCESSED_DIR="$STARFORGE_CLAUDE_DIR/triggers/processed"
+LOG_FILE="$STARFORGE_CLAUDE_DIR/trigger-monitor.log"
+SEEN_FILE="$STARFORGE_CLAUDE_DIR/.trigger-monitor-seen"
 
 # Ensure directories exist
 mkdir -p "$TRIGGER_DIR"
