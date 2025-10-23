@@ -12,12 +12,16 @@ Manage 3 junior-devs working in parallel. Maximize throughput, ensure quality.
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
+# 0. Load project environment
+source .claude/lib/project-env.sh
+
 # 1. Verify location (main repo)
-if [[ ! "$PWD" =~ /empowerai$ ]]; then
-  echo "❌ Must run from main repo ~/empowerai"
+if is_worktree; then
+  echo "❌ Must run from main repo, not worktree"
   exit 1
 fi
 echo "✅ Location: Main repository"
+echo "✅ Project: $STARFORGE_PROJECT_NAME"
 
 # 2. Read project context
 if [ ! -f .claude/PROJECT_CONTEXT.md ]; then
@@ -111,7 +115,7 @@ gh issue list \
 # Example: Assign ticket #104 to junior-dev-a
 TICKET=104
 AGENT="junior-dev-a"
-WORKTREE="$HOME/empowerai-${AGENT}"
+WORKTREE="$HOME/${STARFORGE_PROJECT_NAME}-${AGENT}"
 
 # 1. Update GitHub
 gh issue edit $TICKET --add-label "in-progress" --remove-label "ready"
@@ -134,15 +138,15 @@ if [ $? -ne 0 ]; then
 fi
 
 # Return to main repo
-cd ~/empowerai
+cd "$STARFORGE_MAIN_REPO"
 
 # 3. Update coordination file (using jq to avoid Write tool prompts)
-STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
 jq -n \
   --arg agent "$AGENT" \
   --arg ticket "$TICKET" \
   --arg assigned_at "$(date -Iseconds)" \
-  --arg worktree "empowerai-${AGENT}" \
+  --arg worktree "${STARFORGE_PROJECT_NAME}-${AGENT}" \
   --arg branch "feature/ticket-${TICKET}" \
   '{
     agent: $agent,
@@ -160,13 +164,13 @@ trigger_junior_dev "$AGENT" $TICKET
 
 # 4. VERIFY TRIGGER (MANDATORY - Level 4 verification)
 sleep 1  # Allow filesystem sync
-TRIGGER_FILE=$(ls -t .claude/triggers/${AGENT}-implement_ticket-*.trigger 2>/dev/null | head -1)
+TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/${AGENT}-implement_ticket-*.trigger" 2>/dev/null | head -1)
 
 if [ ! -f "$TRIGGER_FILE" ]; then
   echo "❌ TRIGGER CREATION FAILED"
   # Rollback assignment
   gh issue edit $TICKET --remove-label "in-progress" --add-label "ready"
-  rm -f .claude/coordination/${AGENT}-status.json
+  rm -f "$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
   exit 1
 fi
 
@@ -289,7 +293,7 @@ gh pr list --label "qa-approved" --json number,title --jq '.[] | "\(.number)|\(.
       AGENT=$(gh pr view $PR_NUMBER --json author --jq -r '.author.login' | grep -o 'junior-dev-[abc]')
 
       if [ -n "$AGENT" ]; then
-        STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+        STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
         jq --arg ticket "$TICKET" \
            '.status = "idle" | .ticket = null | .last_completed = ($ticket | tonumber) | .completed_at = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
            "$STATUS_FILE" > /tmp/status.json && mv /tmp/status.json "$STATUS_FILE"
@@ -334,7 +338,7 @@ gh pr list --label "qa-declined" --json number,title,author --jq '.[] | "\(.numb
   fi
 
   # Check if agent is already working on the fix
-  STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+  STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
   CURRENT_STATUS=$(jq -r '.status' "$STATUS_FILE" 2>/dev/null || echo "idle")
   CURRENT_TICKET=$(jq -r '.ticket' "$STATUS_FILE" 2>/dev/null || echo "null")
 
@@ -358,7 +362,7 @@ gh pr list --label "qa-declined" --json number,title,author --jq '.[] | "\(.numb
 
   # Create trigger for agent to fix the PR
   source .claude/scripts/trigger-helpers.sh
-  TRIGGER_FILE=".claude/triggers/${AGENT}-fix_pr-$(date +%s).trigger"
+  TRIGGER_FILE="$STARFORGE_CLAUDE_DIR/triggers/${AGENT}-fix_pr-$(date +%s).trigger"
 
   cat > "$TRIGGER_FILE" << EOF
 {
@@ -399,7 +403,7 @@ fi
 ```bash
 # Check for blocked agents
 for AGENT in junior-dev-a junior-dev-b junior-dev-c; do
-  STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+  STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
   if [ -f "$STATUS_FILE" ]; then
     STATUS=$(jq -r '.status' "$STATUS_FILE")
     if [ "$STATUS" = "blocked" ]; then
@@ -433,11 +437,11 @@ done
 # Generate status (every 4 hours or on demand)
 
 cat << REPORT
-# EmpowerAI Status - $(date '+%Y-%m-%d %H:%M')
+# $STARFORGE_PROJECT_NAME Status - $(date '+%Y-%m-%d %H:%M')
 
 ## Active Work
 $(for AGENT in junior-dev-a junior-dev-b junior-dev-c; do
-  STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+  STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
   if [ -f "$STATUS_FILE" ]; then
     STATUS=$(jq -r '.status' "$STATUS_FILE")
     TICKET=$(jq -r '.ticket' "$STATUS_FILE")
@@ -449,7 +453,7 @@ done)
 
 ## Idle Agents
 $(for AGENT in junior-dev-a junior-dev-b junior-dev-c; do
-  STATUS_FILE=".claude/coordination/${AGENT}-status.json"
+  STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
   if [ -f "$STATUS_FILE" ]; then
     STATUS=$(jq -r '.status' "$STATUS_FILE")
     if [ "$STATUS" = "idle" ]; then
@@ -507,9 +511,9 @@ echo "🚨 System deadlock: All agents blocked on dependency chain. Manual inter
 
 ```bash
 # ❌ NEVER DO THIS
-cd ~/empowerai-junior-dev-a  # Don't go into worktrees
-git checkout -b ...           # Don't create branches for them
-git rebase ...                # Don't rebase for them
+cd ~/${STARFORGE_PROJECT_NAME}-junior-dev-a  # Don't go into worktrees
+git checkout -b ...                          # Don't create branches for them
+git rebase ...                               # Don't rebase for them
 
 # ✅ ONLY DO THIS
 # - Update GitHub issues
