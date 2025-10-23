@@ -12,27 +12,35 @@ Convert Senior Engineer breakdowns into actionable GitHub Issues. Keep queue ≥
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 1. Verify location
-if [[ ! "$PWD" =~ /empowerai$ ]]; then
-  echo "❌ Must run from main repo ~/empowerai"
+# 0. Source project environment
+if [ -f .claude/lib/project-env.sh ]; then
+  source .claude/lib/project-env.sh
+else
+  echo "❌ project-env.sh not found"
   exit 1
 fi
-echo "✅ Location: Main repository"
+
+# 1. Verify location (using dynamic path)
+if [ ! -d "$STARFORGE_MAIN_REPO" ]; then
+  echo "❌ Main repository not found: $STARFORGE_MAIN_REPO"
+  exit 1
+fi
+echo "✅ Location: Main repository ($STARFORGE_PROJECT_NAME)"
 
 # 2. Read project context
-if [ ! -f .claude/PROJECT_CONTEXT.md ]; then
+if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
   echo "❌ PROJECT_CONTEXT.md missing"
   exit 1
 fi
-cat .claude/PROJECT_CONTEXT.md | head -15
-echo "✅ Context: $(grep '##.*Building' .claude/PROJECT_CONTEXT.md | head -1)"
+cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
+echo "✅ Context: $(grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1)"
 
 # 3. Read tech stack
-if [ ! -f .claude/TECH_STACK.md ]; then
+if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
   echo "❌ TECH_STACK.md missing"
   exit 1
 fi
-echo "✅ Tech Stack: $(grep 'Primary:' .claude/TECH_STACK.md | head -1)"
+echo "✅ Tech Stack: $(grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1)"
 
 # 4. Check GitHub connection
 gh auth status > /dev/null 2>&1
@@ -50,7 +58,7 @@ if [ $READY_COUNT -lt 5 ]; then
 fi
 
 # 6. Read learnings
-LEARNINGS=.claude/agents/agent-learnings/tpm/learnings.md
+LEARNINGS="$STARFORGE_CLAUDE_DIR/agents/agent-learnings/tpm/learnings.md"
 if [ -f "$LEARNINGS" ]; then
   cat "$LEARNINGS"
   echo "✅ Learnings reviewed"
@@ -71,7 +79,16 @@ echo ""
 
 ```bash
 # Breakdown file from senior-engineer
-BREAKDOWN_FILE="$1"  # Passed as argument or in context
+# Can be passed as argument or auto-detected from latest spike
+BREAKDOWN_FILE="$1"
+
+# If not provided, find latest spike breakdown
+if [ -z "$BREAKDOWN_FILE" ]; then
+  SPIKE_DIR=$(ls -td "$STARFORGE_CLAUDE_DIR/spikes/spike-"* 2>/dev/null | head -1)
+  if [ -n "$SPIKE_DIR" ]; then
+    BREAKDOWN_FILE="$SPIKE_DIR/breakdown.md"
+  fi
+fi
 
 if [ ! -f "$BREAKDOWN_FILE" ]; then
   echo "❌ Breakdown file not found: $BREAKDOWN_FILE"
@@ -187,11 +204,11 @@ echo "✅ All tickets verified in GitHub"
 TICKET_JSON=$(printf '%s\n' "${CREATED_TICKETS[@]}" | jq -R . | jq -s .)
 
 # Trigger orchestrator
-source .claude/scripts/trigger-helpers.sh
+source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 trigger_work_ready $TICKET_COUNT "$TICKET_JSON"
 
 # VERIFY TRIGGER (MANDATORY)
-TRIGGER_FILE=$(ls -t .claude/triggers/orchestrator-assign_tickets-*.trigger | head -1)
+TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/orchestrator-assign_tickets-"*.trigger | head -1)
 
 if [ ! -f "$TRIGGER_FILE" ]; then
   echo "❌ TRIGGER CREATION FAILED: File not found"
