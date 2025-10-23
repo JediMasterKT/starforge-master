@@ -189,7 +189,7 @@ configure_git_remote() {
 create_structure() {
     echo -e "${INFO}Creating .claude/ directory structure..."
 
-    mkdir -p "$CLAUDE_DIR"/{agents,scripts,hooks,coordination,triggers/processed,spikes,scratchpads,breakdowns,research,qa}
+    mkdir -p "$CLAUDE_DIR"/{agents,scripts,hooks,coordination,triggers/processed,spikes,scratchpads,breakdowns,research,qa,lib}
     mkdir -p "$CLAUDE_DIR/agents/agent-learnings"/{orchestrator,senior-engineer,junior-engineer,qa-engineer,tpm}
     mkdir -p "$CLAUDE_DIR/agents/scratchpads"/{orchestrator,senior-engineer,junior-engineer,qa-engineer,tpm}
 
@@ -210,6 +210,12 @@ copy_agent_files() {
     # Copy hooks
     cp "$TEMPLATE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks/"
     chmod +x "$CLAUDE_DIR/hooks"/*.sh
+
+    # Copy lib files
+    echo -e "${INFO}Installing library files..."
+    cp "$TEMPLATE_DIR/lib/project-env.sh" "$CLAUDE_DIR/lib/"
+    chmod +x "$CLAUDE_DIR/lib/project-env.sh"
+    echo -e "${CHECK} Library installed"
 
     # Copy protocol files
     cp "$TEMPLATE_DIR/CLAUDE.md" "$CLAUDE_DIR/"
