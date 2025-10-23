@@ -1,14 +1,20 @@
 #!/bin/bash
 # Helper functions for creating trigger files
 
-# Auto-detect main repo (works in worktrees)
-MAIN_REPO=$(git worktree list --porcelain | grep "^worktree" | head -1 | cut -d' ' -f2)
-if [ -z "$MAIN_REPO" ]; then
-  # Fallback if git worktree not available
-  MAIN_REPO=$(pwd)
+# Source project environment detection
+# Try current directory first, then fallback to main repo
+if [ -f ".claude/lib/project-env.sh" ]; then
+  source .claude/lib/project-env.sh
+elif [ -f "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh" ]; then
+  source "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh"
+else
+  echo "ERROR: project-env.sh not found. Run 'starforge install' first."
+  exit 1
 fi
-TRIGGER_DIR="$MAIN_REPO/.claude/triggers"
-LOG_FILE="$MAIN_REPO/.claude/trigger-history.log"
+
+# Use environment variables from project-env.sh
+TRIGGER_DIR="$STARFORGE_CLAUDE_DIR/triggers"
+LOG_FILE="$STARFORGE_CLAUDE_DIR/trigger-history.log"
 
 # Ensure trigger directory exists
 mkdir -p "$TRIGGER_DIR"
