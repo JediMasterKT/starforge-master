@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Source project environment for dynamic paths
+# Try multiple locations to support main repo and worktrees
+if [ -f ".claude/lib/project-env.sh" ]; then
+    . .claude/lib/project-env.sh
+elif [ -f "../.claude/lib/project-env.sh" ]; then
+    . ../.claude/lib/project-env.sh
+fi
+
 # Log file for debugging
 LOG_FILE="$HOME/.claude/hook-debug.log"
 mkdir -p "$HOME/.claude"
@@ -26,10 +34,13 @@ echo "Current branch: $current_branch" >> "$LOG_FILE"
 
 # WHITELIST: Allow ALL edits in junior-dev worktrees
 # Junior-devs work on feature branches by architectural design (never on main)
-if [[ "$cwd" =~ empowerai-junior-dev-[abc] ]] || [[ "$file_path" =~ empowerai-junior-dev-[abc] ]]; then
-    echo "ALLOWING: Junior-dev worktree detected (feature branches only by design)" >> "$LOG_FILE"
-    echo "Exit code: 0" >> "$LOG_FILE"
-    exit 0
+# Use dynamic project name from environment
+if [ -n "$STARFORGE_PROJECT_NAME" ]; then
+    if [[ "$cwd" =~ $STARFORGE_PROJECT_NAME-junior-dev-[abc] ]] || [[ "$file_path" =~ $STARFORGE_PROJECT_NAME-junior-dev-[abc] ]]; then
+        echo "ALLOWING: Junior-dev worktree detected (feature branches only by design)" >> "$LOG_FILE"
+        echo "Exit code: 0" >> "$LOG_FILE"
+        exit 0
+    fi
 fi
 
 # WHITELIST: Allow edits to coordination, triggers, agents, spikes on main
