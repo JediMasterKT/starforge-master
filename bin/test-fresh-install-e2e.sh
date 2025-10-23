@@ -207,8 +207,8 @@ test_fresh_repo_install() {
     cd "$TEST_PROJECT_DIR"
 
     # Run installation (non-interactive mode)
-    # Inputs: 3 agents, yes to create worktrees
-    echo -e "3\ny" | bash "$STARFORGE_ROOT/bin/install.sh" > /tmp/install.log 2>&1
+    # Provide inputs: 3 (skip GitHub), 3 (agent count), y (proceed)
+    echo -e "3\n3\ny" | bash "$STARFORGE_ROOT/bin/install.sh" > /tmp/install.log 2>&1
     local install_exit=$?
 
     assert_success "Installation completed successfully" $install_exit
@@ -344,7 +344,7 @@ test_non_git_directory_fails_gracefully() {
     cd "$non_git_dir"
 
     # Try to install in non-git directory (should fail)
-    echo -e "3\ny" | bash "$STARFORGE_ROOT/bin/install.sh" > /tmp/non-git-install.log 2>&1
+    echo -e "3\n3\ny" | bash "$STARFORGE_ROOT/bin/install.sh" > /tmp/non-git-install.log 2>&1
     local exit_code=$?
 
     assert_failure "Installation fails gracefully in non-git directory" $exit_code
