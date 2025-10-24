@@ -240,6 +240,18 @@ case "$COMMAND" in
         exec "./.claude/scripts/trigger-monitor.sh" "$@"
         ;;
 
+    daemon)
+        # Manage the autonomous daemon
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Route to daemon lifecycle manager
+        "$STARFORGE_DIR/bin/daemon.sh" "$@"
+        ;;
+
     use)
         # Invoke a specific agent
         agent="$1"
@@ -599,6 +611,14 @@ case "$COMMAND" in
         echo ""
         echo -e "  ${YELLOW}starforge monitor${NC}"
         echo "    Watch for agent triggers and handoffs (run in separate terminal)"
+        echo ""
+        echo -e "  ${YELLOW}starforge daemon <start|stop|status|restart|logs>${NC}"
+        echo "    Manage the autonomous daemon for 24/7 operation"
+        echo "    - start:   Start daemon in background"
+        echo "    - stop:    Stop the daemon gracefully"
+        echo "    - status:  Show daemon status and recent activity"
+        echo "    - restart: Restart the daemon"
+        echo "    - logs:    Tail the daemon log file"
         echo ""
         echo -e "  ${YELLOW}starforge status${NC}"
         echo "    Show current agent status, worktrees, and GitHub queue"
