@@ -106,6 +106,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PROJECT_DIR}}/.claude/hooks/stop.py"
+          }
+        ]
+      }
     ]
   }
 }
