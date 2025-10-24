@@ -93,7 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_DIR}}/.claude/hooks/block-main-edits.sh"
+            "command": "{{PROJECT_DIR}}/.claude/hooks/nuclear-edit-guardrails.sh"
           }
         ]
       },
@@ -102,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_DIR}}/.claude/hooks/block-main-bash.sh"
+            "command": "{{PROJECT_DIR}}/.claude/hooks/nuclear-bash-guardrails.sh"
           }
         ]
       }
