@@ -27,6 +27,16 @@ mkdir -p "$CLAUDE_DIR/logs"
 # Touch log file
 touch "$LOG_FILE"
 
+# Load environment variables (Discord webhooks, etc.)
+if [ -f "$PROJECT_ROOT/.env" ]; then
+  source "$PROJECT_ROOT/.env"
+fi
+
+# Load Discord notification helper (optional - gracefully skips if not present)
+if [ -f "$PROJECT_ROOT/.claude/lib/discord-notify.sh" ]; then
+  source "$PROJECT_ROOT/.claude/lib/discord-notify.sh"
+fi
+
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Logging
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -113,6 +123,34 @@ archive_trigger() {
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Progress Monitoring
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+monitor_agent_progress() {
+  local agent=$1
+  local start_time=$2
+  local ticket=$3
+  local interval=300  # 5 minutes
+
+  while true; do
+    sleep $interval
+
+    # Check if parent process still exists
+    if ! ps -p $PPID > /dev/null 2>&1; then
+      break
+    fi
+
+    local elapsed=$(($(date +%s) - start_time))
+    local elapsed_min=$((elapsed / 60))
+
+    # Send progress notification (if Discord configured)
+    if type send_agent_progress_notification &>/dev/null; then
+      send_agent_progress_notification "$agent" "$elapsed_min" "$ticket"
+    fi
+  done
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Agent Invocation
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -162,16 +200,55 @@ invoke_agent() {
   # Invoke agent via Task tool using claude --print (non-interactive)
   log_event "TASKTOOL" "Invoking $to_agent via Task tool"
 
+  # Extract ticket from context (if present)
+  local ticket=$(jq -r '.context.ticket // "N/A"' "$trigger_file" 2>/dev/null || echo "N/A")
+
+  # Send agent start notification (if Discord configured)
+  if type send_agent_start_notification &>/dev/null; then
+    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket"
+  fi
+
+  # Start background progress monitor
+  monitor_agent_progress "$to_agent" "$start_time" "$ticket" &
+  MONITOR_PID=$!
+
   if timeout "$AGENT_TIMEOUT" claude --print --permission-mode bypassPermissions "Use the $to_agent agent. $prompt" >> "$LOG_FILE" 2>&1; then
     local duration=$(($(date +%s) - start_time))
     log_event "COMPLETE" "$to_agent completed in ${duration}s"
+
+    # Kill progress monitor
+    kill $MONITOR_PID 2>/dev/null || true
+
+    # Send completion notification (if Discord configured)
+    if type send_agent_complete_notification &>/dev/null; then
+      local duration_min=$((duration / 60))
+      local duration_sec=$((duration % 60))
+      send_agent_complete_notification "$to_agent" "$duration_min" "$duration_sec" "$action" "$ticket"
+    fi
+
     return 0
   else
     local exit_code=$?
+    local duration=$(($(date +%s) - start_time))
+
+    # Kill progress monitor
+    kill $MONITOR_PID 2>/dev/null || true
+
     if [ $exit_code -eq 124 ]; then
       log_event "ERROR" "$to_agent timed out after ${AGENT_TIMEOUT}s"
+
+      # Send timeout notification (if Discord configured)
+      if type send_agent_timeout_notification &>/dev/null; then
+        send_agent_timeout_notification "$to_agent" "$action" "$ticket"
+      fi
     else
       log_event "ERROR" "$to_agent failed (exit: $exit_code)"
+
+      # Send error notification (if Discord configured)
+      if type send_agent_error_notification &>/dev/null; then
+        local duration_min=$((duration / 60))
+        send_agent_error_notification "$to_agent" "$exit_code" "$duration_min" "$ticket"
+      fi
     fi
     return 1
   fi
