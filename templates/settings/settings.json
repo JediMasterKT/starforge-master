@@ -57,7 +57,8 @@
       "Bash(tee *)",
       "Bash(./bin/test-* *)",
       "Bash(starforge *)",
-      "Bash(claude *)"
+      "Bash(claude *)",
+      "Bash({{PROJECT_DIR}}/.claude/scripts/* *)"
     ],
     "deny": [
       "Bash(rm -rf /:*)",
