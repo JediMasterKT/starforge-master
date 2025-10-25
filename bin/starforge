@@ -139,10 +139,10 @@ case "$COMMAND" in
         chmod +x "$CLAUDE_DIR/scripts"/*.sh
         echo -e "${CHECK} Updated scripts"
 
-        # Update hooks
+        # Update hooks (copy all files, not just .sh)
         echo -e "${INFO}Updating hooks..."
-        cp "$STARFORGE_DIR/templates/hooks"/*.sh "$CLAUDE_DIR/hooks/"
-        chmod +x "$CLAUDE_DIR/hooks"/*.sh
+        cp "$STARFORGE_DIR/templates/hooks"/* "$CLAUDE_DIR/hooks/"
+        chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
         echo -e "${CHECK} Updated hooks"
 
         # Update protocol files
@@ -156,6 +156,13 @@ case "$COMMAND" in
         sed "s|{{PROJECT_DIR}}|$TARGET_DIR|g" "$STARFORGE_DIR/templates/settings/settings.json" > "$CLAUDE_DIR/settings.json"
         echo -e "${CHECK} Updated settings.json"
 
+        # Copy .env.example if it exists in templates (only if not already in project)
+        if [ -f "$STARFORGE_DIR/templates/.env.example" ] && [ ! -f "$TARGET_DIR/.env.example" ]; then
+            echo -e "${INFO}Adding .env.example template..."
+            cp "$STARFORGE_DIR/templates/.env.example" "$TARGET_DIR/.env.example"
+            echo -e "${CHECK} Added .env.example (configure for Discord notifications)"
+        fi
+
         echo ""
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${CHECK} ${GREEN}StarForge updated successfully!${NC}"
@@ -164,9 +171,10 @@ case "$COMMAND" in
         echo -e "${YELLOW}Updated components:${NC}"
         echo "  - 5 agent definitions (orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent)"
         echo "  - Scripts (trigger-monitor, trigger-helpers, watch-triggers)"
-        echo "  - Hooks (block-main-edits, block-main-bash)"
+        echo "  - Hooks (block-main-edits, block-main-bash, stop.py with Discord integration)"
         echo "  - Protocol files (CLAUDE.md, LEARNINGS.md)"
         echo "  - Settings (settings.json)"
+        echo "  - Configuration templates (.env.example for Discord webhooks)"
         echo ""
         echo -e "${GREEN}Preserved:${NC}"
         echo "  - Agent learnings (.claude/agents/agent-learnings/)"
