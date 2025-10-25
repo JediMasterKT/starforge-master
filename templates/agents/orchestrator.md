@@ -258,47 +258,24 @@ get_qa_approved_prs | while IFS='|' read -r PR_NUMBER TITLE; do
     continue
   fi
 
-  # Check if high-risk (requires human approval)
+  # ALL PRs require human approval to merge
   CHANGES=$(get_pr_line_changes $PR_NUMBER)
-  PRIORITY=$(get_issue_priority $TICKET 2>/dev/null || echo "")
+  PRIORITY=$(get_issue_priority $TICKET 2>/dev/null || echo "P1")
 
-  if [ "$PRIORITY" = "P0" ] || [ "$CHANGES" -gt 200 ]; then
-    echo "⚠️  High-risk PR #$PR_NUMBER ($PRIORITY, $CHANGES lines changed)"
-    echo "   Requires human approval - leaving for human to merge"
-    gh pr comment $PR_NUMBER --body "⚠️ @human This PR requires your approval before merge:\n- Priority: ${PRIORITY:-P1}\n- Lines changed: $CHANGES\n- Auto-merge blocked (P0 or >200 lines)"
-  else
-    # Auto-merge (safe PR)
-    echo "✅ Auto-merging PR #$PR_NUMBER (safe: $CHANGES lines, ${PRIORITY:-P1})"
+  echo "✅ PR #$PR_NUMBER ready for human review"
+  echo "   Priority: $PRIORITY, Changes: $CHANGES lines"
 
-    gh pr merge $PR_NUMBER --squash --delete-branch
+  # Notify human that PR is qa-approved and ready for merge
+  gh pr comment $PR_NUMBER --body "✅ **QA Approved - Ready for Human Review**
 
-    if [ $? -eq 0 ]; then
-      echo "✅ PR #$PR_NUMBER merged and branch deleted"
+**Issue:** #$TICKET
+**Priority:** $PRIORITY
+**Changes:** $CHANGES lines
+**Status:** All tests passed, QA approved
 
-      # Update issue: remove in-progress, add completed
-      gh issue edit $TICKET --remove-label "in-progress" --add-label "completed"
-      echo "✅ Updated issue #$TICKET labels: in-progress → completed"
+@human Please review and merge when ready. The orchestrator has verified this PR is ready but requires your approval to merge."
 
-      # Close ticket
-      gh issue close $TICKET --reason "completed"
-
-      # Notify completion
-      gh issue comment $TICKET --body "✅ Completed and merged via PR #$PR_NUMBER\n\nAuto-merged by orchestrator (qa-approved, $CHANGES lines changed)"
-
-      # Update agent status to idle
-      AGENT=$(get_pr_author_agent $PR_NUMBER)
-
-      if [ -n "$AGENT" ]; then
-        STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
-        jq --arg ticket "$TICKET" \
-           '.status = "idle" | .ticket = null | .last_completed = ($ticket | tonumber) | .completed_at = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
-           "$STATUS_FILE" > /tmp/status.json && mv /tmp/status.json "$STATUS_FILE"
-        echo "✅ Agent $AGENT status updated to idle"
-      fi
-    else
-      echo "❌ Failed to merge PR #$PR_NUMBER"
-    fi
-  fi
+  echo "✅ Human notified for PR #$PR_NUMBER (awaiting manual merge)"
 done
 
 # Summary
