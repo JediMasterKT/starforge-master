@@ -199,6 +199,131 @@ check_gh_auth() {
     return $?
 }
 
+# Count in-progress tickets
+# Replaces: gh issue list --label "in-progress" --json number | jq length
+get_in_progress_ticket_count() {
+    local count=$(gh issue list --label "in-progress" --json number 2>/dev/null | jq length 2>/dev/null)
+
+    if [ -z "$count" ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$count"
+}
+
+# Get QA-approved PRs (formatted for iteration)
+# Replaces: gh pr list --label "qa-approved" --json number,title --jq '.[] | "\(.number)|\(.title)"'
+get_qa_approved_prs() {
+    gh pr list --label "qa-approved" --json number,title 2>/dev/null | jq -r '.[] | "\(.number)|\(.title)"' 2>/dev/null
+
+    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        return 1
+    fi
+}
+
+# Count QA-approved PRs
+# Replaces: gh pr list --label "qa-approved" --json number | jq length
+get_qa_approved_pr_count() {
+    local count=$(gh pr list --label "qa-approved" --json number 2>/dev/null | jq length 2>/dev/null)
+
+    if [ -z "$count" ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$count"
+}
+
+# Get PR line changes (additions + deletions)
+# Replaces: gh pr view $PR_NUMBER --json additions,deletions --jq '.additions + .deletions'
+get_pr_line_changes() {
+    local pr_number=$1
+
+    if [ -z "$pr_number" ]; then
+        echo "❌ PR number required"
+        return 1
+    fi
+
+    local changes=$(gh pr view "$pr_number" --json additions,deletions --jq '.additions + .deletions' 2>/dev/null)
+
+    if [ -z "$changes" ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$changes"
+}
+
+# Get issue priority label (P0, P1, P2, etc.)
+# Replaces: gh issue view $TICKET --json labels --jq -r '.labels[] | select(.name | startswith("P")) | .name'
+get_issue_priority() {
+    local issue_number=$1
+
+    if [ -z "$issue_number" ]; then
+        echo "❌ Issue number required"
+        return 1
+    fi
+
+    local priority=$(gh issue view "$issue_number" --json labels --jq -r '.labels[] | select(.name | startswith("P")) | .name' 2>/dev/null | head -1)
+
+    if [ -z "$priority" ]; then
+        return 1  # No priority label found (not an error - might be P1 default)
+    fi
+
+    echo "$priority"
+}
+
+# Get agent ID from PR author
+# Replaces: gh pr view $PR_NUMBER --json author --jq -r '.author.login' | grep -o 'junior-dev-[abc]'
+get_pr_author_agent() {
+    local pr_number=$1
+
+    if [ -z "$pr_number" ]; then
+        echo "❌ PR number required"
+        return 1
+    fi
+
+    local author=$(gh pr view "$pr_number" --json author --jq -r '.author.login' 2>/dev/null)
+
+    if [ -z "$author" ]; then
+        return 1
+    fi
+
+    # Extract agent ID (e.g., "junior-dev-a" from author name)
+    local agent=$(echo "$author" | grep -o 'junior-dev-[abc]')
+
+    if [ -z "$agent" ]; then
+        return 1  # Not an agent PR
+    fi
+
+    echo "$agent"
+}
+
+# Get QA-declined PRs (formatted for iteration)
+# Replaces: gh pr list --label "qa-declined" --json number,title,author --jq '.[] | "\(.number)|\(.title)|\(.author.login)"'
+get_qa_declined_prs() {
+    gh pr list --label "qa-declined" --json number,title,author 2>/dev/null | jq -r '.[] | "\(.number)|\(.title)|\(.author.login)"' 2>/dev/null
+
+    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        return 1
+    fi
+}
+
+# Count tickets closed today
+# Replaces: gh issue list --state closed --search "closed:$(date '+%Y-%m-%d')" --json number | jq length
+get_closed_today_count() {
+    local today=$(date '+%Y-%m-%d')
+    local count=$(gh issue list --state closed --search "closed:$today" --json number 2>/dev/null | jq length 2>/dev/null)
+
+    if [ -z "$count" ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$count"
+}
+
 # Get latest created issue number
 # Replaces: gh issue list --limit 1 --json number --jq '.[0].number'
 get_latest_issue_number() {
