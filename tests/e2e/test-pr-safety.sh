@@ -163,15 +163,17 @@ test_qa_approved_detection() {
   git commit -m "Test: PR safety feature"
   git push -u origin test-pr-safety-feature
 
-  # Create PR with qa-approved label
-  local pr_number=$(gh pr create \
+  # Create PR with qa-approved label (capture URL and extract number)
+  local pr_url=$(gh pr create \
     --repo "$TEST_REPO_NAME" \
     --title "Test: PR Safety Feature" \
     --body "Testing human approval requirement" \
     --label "qa-approved,test-pr" \
     --base main \
-    --head test-pr-safety-feature \
-    --json number --jq '.number')
+    --head test-pr-safety-feature 2>&1 | tail -1)
+
+  # Extract PR number from URL (e.g., https://github.com/user/repo/pull/123 -> 123)
+  local pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
 
   echo -e "${GREEN}✓ Created test PR #${pr_number}${NC}"
 

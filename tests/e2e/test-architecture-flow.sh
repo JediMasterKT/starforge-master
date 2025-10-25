@@ -206,14 +206,16 @@ $diagram_content
 EOF
 )
 
-  # Create the issue
-  local issue_number=$(gh issue create \
+  # Create the issue (capture URL and extract number)
+  local issue_url=$(gh issue create \
     --repo "$TEST_REPO_NAME" \
     --title "Create Auth Middleware" \
     --body "$issue_body" \
     --label "feature,P1" \
-    --assignee "@me" \
-    --json number --jq '.number')
+    --assignee "@me" 2>&1 | tail -1)
+
+  # Extract issue number from URL (e.g., https://github.com/user/repo/issues/123 -> 123)
+  local issue_number=$(echo "$issue_url" | grep -oE '[0-9]+$')
 
   echo -e "${GREEN}✓ Created issue #${issue_number}${NC}"
 
