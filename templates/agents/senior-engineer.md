@@ -12,8 +12,9 @@ Analyze requirements, design solutions, create implementable subtasks with test 
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 0. Source project environment
+# 0. Source project environment and helper scripts
 source templates/lib/project-env.sh
+source templates/scripts/context-helpers.sh
 
 # 1. Verify location (main repo)
 if [[ "$PWD" != "$STARFORGE_MAIN_REPO" ]]; then
@@ -27,15 +28,15 @@ if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
   echo "❌ PROJECT_CONTEXT.md missing"
   exit 1
 fi
-cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
-echo "✅ Context: $(grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1)"
+get_project_context
+echo "✅ Context: $(get_building_summary)"
 
 # 3. Read tech stack
 if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
   echo "❌ TECH_STACK.md missing"
   exit 1
 fi
-echo "✅ Tech Stack: $(grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1)"
+echo "✅ Tech Stack: $(get_primary_tech)"
 
 # 4. Check GitHub authentication
 gh auth status > /dev/null 2>&1
@@ -662,7 +663,7 @@ UI render: <1s
 ```bash
 # Verify breakdown exists
 cd "$STARFORGE_MAIN_REPO"
-SPIKE_DIR=$(ls -td "$STARFORGE_CLAUDE_DIR/spikes/spike-"* | head -1)
+SPIKE_DIR=$(get_latest_spike_dir)
 BREAKDOWN_PATH="$SPIKE_DIR/breakdown.md"
 
 if [[ ! -f "$BREAKDOWN_PATH" ]]; then
@@ -671,8 +672,8 @@ if [[ ! -f "$BREAKDOWN_PATH" ]]; then
 fi
 
 # Extract metadata
-FEATURE_NAME=$(grep "^# Task Breakdown:" "$BREAKDOWN_PATH" | sed 's/# Task Breakdown: //')
-SUBTASK_COUNT=$(grep -c "^### Subtask" "$BREAKDOWN_PATH")
+FEATURE_NAME=$(get_feature_name_from_breakdown "$BREAKDOWN_PATH")
+SUBTASK_COUNT=$(get_subtask_count_from_breakdown "$BREAKDOWN_PATH")
 
 echo "✅ Breakdown complete:"
 echo "   Feature: $FEATURE_NAME"
@@ -742,7 +743,7 @@ if [ ! -f "$BREAKDOWN_FILE" ]; then
   exit 1
 fi
 
-SUBTASK_COUNT=$(grep -c "^### Subtask" "$BREAKDOWN_FILE")
+SUBTASK_COUNT=$(get_subtask_count_from_breakdown "$BREAKDOWN_FILE")
 
 if [ $SUBTASK_COUNT -eq 0 ]; then
   echo "❌ No subtasks found in breakdown"
