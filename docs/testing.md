@@ -45,12 +45,14 @@ All validation checks must pass for PR to be mergeable.
 
 ---
 
-## Nightly Integration Test
+## Integration Test (Manual Trigger Only)
 
-**Runs:** Every night at 2 AM UTC (manual trigger available)
+**Runs:** Manual trigger only (automatic schedule disabled by default)
 **Duration:** Up to 45 minutes
-**Cost:** Claude API usage (~$2-5 per run)
+**Cost:** Claude API usage (~$2-5 per run, only when manually triggered)
 **Repository:** `JediMasterKT/starforge-master-test`
+
+> **Note:** Automatic nightly runs are disabled by default to avoid costs. You can manually trigger the test anytime via GitHub Actions UI, or uncomment the schedule in the workflow file to enable automatic runs.
 
 ### What It Tests
 - ✅ Full agent workflow execution
@@ -144,7 +146,11 @@ Run on-demand via GitHub Actions UI:
 
 ### Cost Management
 
-**Estimated Costs per Run:**
+**Default Setup (FREE):**
+- Infrastructure validation: Runs automatically on every PR - **$0**
+- Integration test: Manual trigger only - **$0** (unless you run it)
+
+**If You Enable Automatic Integration Tests:**
 - 4 concurrent agents × ~10 minutes each = 40 agent-minutes
 - Average: $2-5 per test run
 - Monthly (30 runs): ~$60-150
@@ -153,6 +159,7 @@ Run on-demand via GitHub Actions UI:
 1. Run fewer agents: Set `max_agents: 2`
 2. Shorter duration: Set `test_duration: 30`
 3. Less frequent: Change cron to `0 2 * * 1` (Mondays only)
+4. **Keep default:** Manual trigger only (recommended)
 
 ### Troubleshooting
 

@@ -1,10 +1,11 @@
 name: Nightly Integration Test
 
 on:
-  schedule:
-    # Run at 2 AM UTC every night
-    - cron: '0 2 * * *'
-  workflow_dispatch: # Allow manual trigger
+  # schedule:
+  #   # Run at 2 AM UTC every night (DISABLED to avoid automatic costs)
+  #   # Uncomment to enable automatic nightly runs (~$60-150/month)
+  #   - cron: '0 2 * * *'
+  workflow_dispatch: # Manual trigger only (FREE - only runs when you click "Run workflow")
     inputs:
       max_agents:
         description: 'Number of concurrent agents'
