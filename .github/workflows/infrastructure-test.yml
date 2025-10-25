@@ -127,6 +127,9 @@ jobs:
         run: |
           echo "🎰 Testing agent slot management..."
 
+          # Set CLAUDE_DIR for agent-slots.sh
+          export CLAUDE_DIR=/tmp/starforge-test/.claude
+
           # Source the library
           source templates/lib/agent-slots.sh
 
