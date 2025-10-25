@@ -23,7 +23,7 @@ NC='\033[0m'
 # Test Configuration
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-TEST_REPO_NAME="${GITHUB_TEST_REPO:-starforge-master-test}"
+TEST_REPO_NAME="${GITHUB_TEST_REPO:-JediMasterKT/starforge-master-test}"
 TEST_DIR="/tmp/starforge-e2e-test-$(date +%s)"
 STARFORGE_ROOT="$PROJECT_ROOT"
 

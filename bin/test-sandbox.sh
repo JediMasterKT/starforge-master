@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Test configuration
-GITHUB_TEST_REPO="${GITHUB_TEST_REPO:-starforge-master-test}"
+GITHUB_TEST_REPO="${GITHUB_TEST_REPO:-JediMasterKT/starforge-master-test}"
 REPORT_DIR="$PROJECT_ROOT/tests/reports"
 REPORT_FILE="$REPORT_DIR/TEST_REPORT.md"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
