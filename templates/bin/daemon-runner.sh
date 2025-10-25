@@ -19,10 +19,17 @@ AGENT_TIMEOUT=1800  # 30 minutes
 DAEMON_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 PROCESSED_COUNT=0
 
+# Parallel execution configuration
+PARALLEL_DAEMON=${PARALLEL_DAEMON:-false}  # Feature flag (default: sequential mode)
+MAX_CONCURRENT_AGENTS=${MAX_CONCURRENT_AGENTS:-999}  # Unlimited by default
+AGENT_SLOTS_FILE="$CLAUDE_DIR/daemon/agent-slots.json"
+PROCESS_MONITOR_INTERVAL=10  # Check running processes every 10 seconds
+
 # Ensure required directories exist
 mkdir -p "$TRIGGER_DIR/processed/invalid"
 mkdir -p "$TRIGGER_DIR/processed/failed"
 mkdir -p "$CLAUDE_DIR/logs"
+mkdir -p "$CLAUDE_DIR/daemon"
 
 # Touch log file
 touch "$LOG_FILE"
@@ -33,8 +40,25 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 # Load Discord notification helper (optional - gracefully skips if not present)
-if [ -f "$CLAUDE_DIR/lib/discord-notify.sh" ]; then
-  source "$CLAUDE_DIR/lib/discord-notify.sh"
+if [ -f "$PROJECT_ROOT/.claude/lib/discord-notify.sh" ]; then
+  source "$PROJECT_ROOT/.claude/lib/discord-notify.sh"
+fi
+
+# Initialize agent slots file
+if [ ! -f "$AGENT_SLOTS_FILE" ]; then
+  echo '{}' > "$AGENT_SLOTS_FILE"
+fi
+
+# Source agent slot management library (if parallel mode enabled)
+if [ "$PARALLEL_DAEMON" = "true" ]; then
+  if [ -f "$CLAUDE_DIR/../templates/lib/agent-slots.sh" ]; then
+    source "$CLAUDE_DIR/../templates/lib/agent-slots.sh"
+  elif [ -f "$PROJECT_ROOT/templates/lib/agent-slots.sh" ]; then
+    source "$PROJECT_ROOT/templates/lib/agent-slots.sh"
+  else
+    log_event "ERROR" "agent-slots.sh not found, falling back to sequential mode"
+    PARALLEL_DAEMON=false
+  fi
 fi
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -294,6 +318,157 @@ invoke_agent_with_retry() {
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Parallel Execution Functions
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# invoke_agent_parallel - Spawn agent in background with slot management
+# Usage: invoke_agent_parallel "trigger-file.trigger"
+# Returns: 0 if spawned, 1 if agent busy, 2 if parse error
+invoke_agent_parallel() {
+  local trigger_file=$1
+
+  # Validate JSON
+  if ! jq empty "$trigger_file" 2>/dev/null; then
+    log_event "ERROR" "Malformed JSON in $(basename "$trigger_file")"
+    return 2  # Parse error
+  fi
+
+  # Parse trigger
+  local to_agent=$(jq -r '.to_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
+  local from_agent=$(jq -r '.from_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
+  local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
+  local ticket=$(jq -r '.context.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
+
+  if [ "$to_agent" = "unknown" ] || [ "$to_agent" = "null" ]; then
+    log_event "ERROR" "Missing 'to_agent' field in $(basename "$trigger_file")"
+    return 2  # Parse error
+  fi
+
+  # Check if agent slot is available
+  if is_agent_busy "$to_agent"; then
+    log_event "QUEUE" "$to_agent busy, trigger stays in queue"
+    return 1  # Agent busy
+  fi
+
+  # Check concurrent agent limit
+  local busy_count=$(get_agent_count_busy)
+  if [ "$busy_count" -ge "$MAX_CONCURRENT_AGENTS" ]; then
+    log_event "QUEUE" "Max concurrent agents reached ($MAX_CONCURRENT_AGENTS), trigger stays in queue"
+    return 1  # Queue full
+  fi
+
+  # Spawn background process
+  log_event "SPAWN" "Starting $to_agent in background ($from_agent → $to_agent: $action)"
+
+  (
+    # Reserve agent slot immediately
+    mark_agent_busy "$to_agent" "$$" "$ticket"
+
+    # Ensure slot is released on exit
+    trap "mark_agent_idle \"$to_agent\"" EXIT
+
+    # Log file for this agent execution
+    local agent_log="$CLAUDE_DIR/logs/${to_agent}-$(date +%s).log"
+
+    # WORKAROUND: Daemon mode - agents run non-interactively
+    # TODO: Implement proper claude --print invocation with stream-json
+    # For now, we simulate successful execution
+
+    log_event "INFO" "$to_agent: Simulating agent execution (daemon mode workaround)" >> "$LOG_FILE"
+    echo "Agent: $to_agent" > "$agent_log"
+    echo "Trigger: $(basename "$trigger_file")" >> "$agent_log"
+    echo "Started: $(date)" >> "$agent_log"
+
+    # Simulate agent work (2 second delay)
+    sleep 2
+
+    echo "Completed: $(date)" >> "$agent_log"
+    log_event "COMPLETE" "$to_agent completed (simulated)" >> "$LOG_FILE"
+
+    exit 0
+
+    # FUTURE CODE (when claude --print is ready):
+    # claude --print \
+    #   --permission-mode bypassPermissions \
+    #   --output-format stream-json \
+    #   "Use $to_agent agent. Process trigger: $(cat "$trigger_file")" \
+    #   2>&1 | tee "$agent_log" | process_stream_output "$to_agent"
+    #
+    # exit ${PIPESTATUS[0]}
+  ) &
+
+  # Save PID
+  local agent_pid=$!
+
+  # Update slot with actual background PID
+  mark_agent_busy "$to_agent" "$agent_pid" "$ticket"
+
+  log_event "SPAWNED" "$to_agent started (PID: $agent_pid)"
+  return 0
+}
+
+# process_stream_output - Parse stream-json output for real-time updates
+# Usage: ... | process_stream_output "agent-id"
+# Future implementation for streaming output
+process_stream_output() {
+  local agent=$1
+  local last_notification=0
+
+  while IFS= read -r line; do
+    # Parse JSONL format
+    local msg_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+
+    case "$msg_type" in
+      "tool_use")
+        # Future: Send progress notification every 5 minutes
+        local current_time=$(date +%s)
+        if [ $((current_time - last_notification)) -ge 300 ]; then
+          log_event "PROGRESS" "$agent: Still working..."
+          last_notification=$current_time
+        fi
+        ;;
+
+      "completion")
+        # Final result
+        log_event "OUTPUT" "$agent: Completed"
+        ;;
+    esac
+  done
+}
+
+# monitor_running_agents - Background loop to detect agent completion
+# Polls every PROCESS_MONITOR_INTERVAL seconds
+monitor_running_agents() {
+  while true; do
+    # Get all busy agents
+    local busy_agents=$(list_busy_agents 2>/dev/null || echo "")
+
+    while IFS= read -r agent; do
+      [ -z "$agent" ] && continue
+
+      local agent_pid=$(get_agent_pid "$agent")
+
+      if [ -n "$agent_pid" ] && ! kill -0 "$agent_pid" 2>/dev/null; then
+        # Process finished
+        wait "$agent_pid" 2>/dev/null
+        local exit_code=$?
+
+        if [ $exit_code -eq 0 ]; then
+          log_event "FINISH" "$agent completed successfully (PID: $agent_pid)"
+        else
+          log_event "FINISH" "$agent failed (PID: $agent_pid, exit: $exit_code)"
+        fi
+
+        # Release slot
+        mark_agent_idle "$agent"
+      fi
+    done <<< "$busy_agents"
+
+    sleep $PROCESS_MONITOR_INTERVAL
+  done
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Trigger Processing
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -357,11 +532,70 @@ process_backlog() {
       fi
 
       log_event "BACKLOG" "Processing: $(basename "$trigger_file")"
-      process_trigger "$trigger_file"
+
+      if [ "$PARALLEL_DAEMON" = "true" ]; then
+        # Parallel mode: Try to spawn, leave in queue if agent busy
+        invoke_agent_parallel "$trigger_file"
+        local result=$?
+
+        if [ $result -eq 0 ]; then
+          # Successfully spawned, archive trigger
+          archive_trigger "$trigger_file" "in-progress"
+          mark_as_processed "$trigger_file"
+        elif [ $result -eq 2 ]; then
+          # Parse error, archive as invalid
+          archive_trigger "$trigger_file" "invalid"
+          mark_as_processed "$trigger_file"
+        fi
+        # If result=1 (agent busy), leave trigger in queue
+      else
+        # Sequential mode: Process synchronously
+        process_trigger "$trigger_file"
+      fi
     done
 
     log_event "BACKLOG" "Backlog processing complete"
   fi
+}
+
+# process_trigger_queue_parallel - Main loop for parallel execution
+# Continuously processes trigger queue with round-robin slot checking
+process_trigger_queue_parallel() {
+  while true; do
+    local trigger_file=$(get_next_trigger)
+
+    # No triggers, wait for new ones
+    if [ -z "$trigger_file" ] || [ ! -f "$trigger_file" ]; then
+      sleep 5
+      continue
+    fi
+
+    # Skip if already processed
+    if was_already_processed "$trigger_file"; then
+      log_event "SKIP" "Already processed: $(basename "$trigger_file")"
+      rm -f "$trigger_file" 2>/dev/null || true
+      continue
+    fi
+
+    # Try to invoke agent
+    invoke_agent_parallel "$trigger_file"
+    local result=$?
+
+    if [ $result -eq 0 ]; then
+      # Successfully spawned
+      archive_trigger "$trigger_file" "in-progress"
+      mark_as_processed "$trigger_file"
+      PROCESSED_COUNT=$((PROCESSED_COUNT + 1))
+    elif [ $result -eq 2 ]; then
+      # Parse error
+      archive_trigger "$trigger_file" "invalid"
+      mark_as_processed "$trigger_file"
+    else
+      # Agent busy, try next trigger (round-robin)
+      log_event "QUEUE" "$(jq -r '.to_agent' "$trigger_file") busy, checking next trigger"
+      sleep 1
+    fi
+  done
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -371,8 +605,14 @@ process_backlog() {
 resume_processing() {
   load_state
 
-  # Check for interrupted trigger
-  if [ -f "$STATE_FILE" ]; then
+  # Parallel mode: Clean up orphaned PIDs
+  if [ "$PARALLEL_DAEMON" = "true" ]; then
+    log_event "RECOVERY" "Checking for orphaned agent processes"
+    cleanup_orphaned_pids
+  fi
+
+  # Check for interrupted trigger (sequential mode only)
+  if [ "$PARALLEL_DAEMON" != "true" ] && [ -f "$STATE_FILE" ]; then
     local current_trigger=$(jq -r '.current_trigger // "none"' "$STATE_FILE" 2>/dev/null || echo "none")
 
     if [ "$current_trigger" != "none" ] && [ "$current_trigger" != "null" ] && [ -f "$TRIGGER_DIR/$current_trigger" ]; then
@@ -394,6 +634,38 @@ resume_processing() {
 
 cleanup_and_exit() {
   log_event "STOP" "Daemon shutting down gracefully"
+
+  # Parallel mode: Kill all running agent processes
+  if [ "$PARALLEL_DAEMON" = "true" ]; then
+    log_event "STOP" "Terminating all running agents"
+
+    # Get list of all busy agents
+    local busy_agents=$(list_busy_agents 2>/dev/null || echo "")
+
+    while IFS= read -r agent; do
+      [ -z "$agent" ] && continue
+
+      local agent_pid=$(get_agent_pid "$agent")
+
+      if [ -n "$agent_pid" ] && kill -0 "$agent_pid" 2>/dev/null; then
+        log_event "STOP" "Terminating $agent (PID: $agent_pid)"
+        kill "$agent_pid" 2>/dev/null
+        wait "$agent_pid" 2>/dev/null
+      fi
+    done <<< "$busy_agents"
+
+    # Kill process monitor if running
+    if [ -n "$MONITOR_PID" ] && kill -0 "$MONITOR_PID" 2>/dev/null; then
+      log_event "STOP" "Stopping process monitor (PID: $MONITOR_PID)"
+      kill "$MONITOR_PID" 2>/dev/null
+    fi
+
+    # Kill queue processor if running
+    if [ -n "$QUEUE_PID" ] && kill -0 "$QUEUE_PID" 2>/dev/null; then
+      log_event "STOP" "Stopping queue processor (PID: $QUEUE_PID)"
+      kill "$QUEUE_PID" 2>/dev/null
+    fi
+  fi
 
   # Kill orchestrator background process if running
   if [ -n "$ORCHESTRATOR_PID" ] && kill -0 "$ORCHESTRATOR_PID" 2>/dev/null; then
@@ -453,6 +725,13 @@ All bash commands (gh, git, jq, cat, grep, etc.) are pre-approved in .claude/set
 main() {
   log_event "START" "Daemon started (PID: $$)"
 
+  # Log execution mode
+  if [ "$PARALLEL_DAEMON" = "true" ]; then
+    log_event "MODE" "Parallel execution enabled (max concurrent: $MAX_CONCURRENT_AGENTS)"
+  else
+    log_event "MODE" "Sequential execution (set PARALLEL_DAEMON=true for parallel mode)"
+  fi
+
   # Check for fswatch
   if ! command -v fswatch &> /dev/null; then
     log_event "ERROR" "fswatch not installed. Install with: brew install fswatch"
@@ -473,19 +752,35 @@ main() {
   orchestrator_check &
   ORCHESTRATOR_PID=$!
 
+  # Parallel mode: Start process monitor
+  if [ "$PARALLEL_DAEMON" = "true" ]; then
+    log_event "MONITOR" "Starting process monitor (checking every ${PROCESS_MONITOR_INTERVAL}s)"
+    monitor_running_agents &
+    MONITOR_PID=$!
+  fi
+
   log_event "MONITOR" "Watching $TRIGGER_DIR for new triggers"
 
-  # Monitor for new triggers using fswatch
-  fswatch -0 --event Created "$TRIGGER_DIR" 2>/dev/null | while read -d "" event; do
-    # Only process .trigger files
-    if [[ "$event" == *.trigger ]]; then
-      log_event "TRIGGER" "Detected: $(basename "$event")"
-      process_trigger "$event"
-    fi
-  done &
+  if [ "$PARALLEL_DAEMON" = "true" ]; then
+    # Parallel mode: Process queue continuously
+    process_trigger_queue_parallel &
+    QUEUE_PID=$!
 
-  # Wait for fswatch process
-  wait
+    # Wait for all background processes
+    wait
+  else
+    # Sequential mode: Use fswatch
+    fswatch -0 --event Created "$TRIGGER_DIR" 2>/dev/null | while read -d "" event; do
+      # Only process .trigger files
+      if [[ "$event" == *.trigger ]]; then
+        log_event "TRIGGER" "Detected: $(basename "$event")"
+        process_trigger "$event"
+      fi
+    done &
+
+    # Wait for fswatch process
+    wait
+  fi
 }
 
 # Run main daemon loop
