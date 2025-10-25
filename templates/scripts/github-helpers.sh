@@ -86,6 +86,19 @@ get_pending_pr_count() {
     echo "$count"
 }
 
+# Count backlog tickets
+# Replaces: gh issue list --label "backlog" --json number | jq length
+get_backlog_ticket_count() {
+    local count=$(gh issue list --label "backlog" --json number 2>/dev/null | jq length 2>/dev/null)
+
+    if [ -z "$count" ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$count"
+}
+
 # Get latest trigger file for orchestrator
 # Replaces: ls -t $STARFORGE_CLAUDE_DIR/triggers/orchestrator-assign_next_work-*.trigger 2>/dev/null | head -1
 get_latest_trigger() {
@@ -184,4 +197,17 @@ get_issues_by_label() {
 check_gh_auth() {
     gh auth status > /dev/null 2>&1
     return $?
+}
+
+# Get latest created issue number
+# Replaces: gh issue list --limit 1 --json number --jq '.[0].number'
+get_latest_issue_number() {
+    local issue_num=$(gh issue list --limit 1 --json number --jq '.[0].number' 2>/dev/null)
+
+    if [ -z "$issue_num" ]; then
+        echo "❌ No issues found"
+        return 1
+    fi
+
+    echo "$issue_num"
 }
