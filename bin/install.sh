@@ -232,8 +232,8 @@ copy_agent_files() {
     cp "$TEMPLATE_DIR/scripts"/*.sh "$CLAUDE_DIR/scripts/"
     chmod +x "$CLAUDE_DIR/scripts"/*.sh
 
-    # Copy hooks (all files, not just .sh)
-    cp "$TEMPLATE_DIR/hooks"/* "$CLAUDE_DIR/hooks/"
+    # Copy hooks (all files, skip directories like __pycache__)
+    find "$TEMPLATE_DIR/hooks" -maxdepth 1 -type f -exec cp {} "$CLAUDE_DIR/hooks/" \;
     chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
 
     # Copy lib files

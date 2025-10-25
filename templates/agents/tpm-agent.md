@@ -20,6 +20,10 @@ else
   exit 1
 fi
 
+# 0.1. Source helper scripts
+source "$STARFORGE_CLAUDE_DIR/scripts/context-helpers.sh"
+source "$STARFORGE_CLAUDE_DIR/scripts/github-helpers.sh"
+
 # 1. Verify location (using dynamic path)
 if [ ! -d "$STARFORGE_MAIN_REPO" ]; then
   echo "❌ Main repository not found: $STARFORGE_MAIN_REPO"
@@ -32,26 +36,25 @@ if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
   echo "❌ PROJECT_CONTEXT.md missing"
   exit 1
 fi
-cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
-echo "✅ Context: $(grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1)"
+get_project_context
+echo "✅ Context: $(get_building_summary)"
 
 # 3. Read tech stack
 if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
   echo "❌ TECH_STACK.md missing"
   exit 1
 fi
-echo "✅ Tech Stack: $(grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1)"
+echo "✅ Tech Stack: $(get_primary_tech)"
 
 # 4. Check GitHub connection
-gh auth status > /dev/null 2>&1
-if [ $? -ne 0 ]; then
+if ! check_gh_auth; then
   echo "❌ GitHub CLI not authenticated"
   exit 1
 fi
 echo "✅ GitHub: Connected"
 
 # 5. Check queue health
-READY_COUNT=$(gh issue list --label "ready" --json number | jq length)
+READY_COUNT=$(get_ready_ticket_count)
 echo "✅ Queue status: $READY_COUNT ready tickets"
 if [ $READY_COUNT -lt 5 ]; then
   echo "⚠️  Queue low - will create tickets"
@@ -160,8 +163,8 @@ BODY
     --body "$TICKET_BODY" \
     --label "ready,$PRIORITY,effort-$EFFORT,type-backend" \
     --milestone "Phase 1"
-  
-  TICKET_NUM=$(gh issue list --limit 1 --json number --jq '.[0].number')
+
+  TICKET_NUM=$(get_latest_issue_number)
   echo "✅ Created ticket #$TICKET_NUM: $TITLE"
   
   # Store for trigger
@@ -208,7 +211,7 @@ source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 trigger_work_ready $TICKET_COUNT "$TICKET_JSON"
 
 # VERIFY TRIGGER (MANDATORY)
-TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/orchestrator-assign_tickets-"*.trigger | head -1)
+TRIGGER_FILE=$(get_latest_trigger "orchestrator" "assign_tickets")
 
 if [ ! -f "$TRIGGER_FILE" ]; then
   echo "❌ TRIGGER CREATION FAILED: File not found"
@@ -328,16 +331,16 @@ def test_error_handling():
 ```bash
 # Check queue health
 check_queue() {
-  READY=$(gh issue list --label "ready" --json number | jq length)
-  BACKLOG=$(gh issue list --label "backlog" --json number | jq length)
-  
+  READY=$(get_ready_ticket_count)
+  BACKLOG=$(get_backlog_ticket_count)
+
   echo "Queue status:"
   echo "- Ready: $READY"
   echo "- Backlog: $BACKLOG"
-  
+
   if [ $READY -lt 5 ]; then
     echo "⚠️  Queue low ($READY < 5)"
-    
+
     if [ $BACKLOG -gt 0 ]; then
       echo "→ Promoting backlog to ready..."
       # Promote tickets
