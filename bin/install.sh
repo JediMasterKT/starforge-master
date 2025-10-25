@@ -232,9 +232,9 @@ copy_agent_files() {
     cp "$TEMPLATE_DIR/scripts"/*.sh "$CLAUDE_DIR/scripts/"
     chmod +x "$CLAUDE_DIR/scripts"/*.sh
 
-    # Copy hooks (all files, not just .sh)
-    cp "$TEMPLATE_DIR/hooks"/* "$CLAUDE_DIR/hooks/"
-    chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
+    # Copy hooks
+    cp "$TEMPLATE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks/"
+    chmod +x "$CLAUDE_DIR/hooks"/*.sh
 
     # Copy lib files
     echo -e "${INFO}Installing library files..."
@@ -248,12 +248,6 @@ copy_agent_files() {
 
     # Copy settings with placeholder replacement
     sed "s|{{PROJECT_DIR}}|$TARGET_DIR|g" "$TEMPLATE_DIR/settings/settings.json" > "$CLAUDE_DIR/settings.json"
-
-    # Copy .env.example for Discord webhook configuration
-    if [ -f "$TEMPLATE_DIR/.env.example" ]; then
-        cp "$TEMPLATE_DIR/.env.example" "$TARGET_DIR/.env.example"
-        echo -e "${INFO}Added .env.example (configure for Discord notifications)"
-    fi
 
     # Create empty learning files
     for agent in orchestrator senior-engineer junior-engineer qa-engineer tpm; do
