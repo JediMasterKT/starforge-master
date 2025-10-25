@@ -1,12 +1,17 @@
 #!/bin/bash
 # Helper functions for creating trigger files
+# Purpose: Eliminate permission prompts from piped trigger commands
+# Workaround for: https://github.com/anthropics/claude-code/issues/5465
 
 # Source project environment detection
 # Try current directory first, then fallback to main repo
 if [ -f ".claude/lib/project-env.sh" ]; then
   source .claude/lib/project-env.sh
-elif [ -f "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh" ]; then
-  source "$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)/.claude/lib/project-env.sh"
+elif [ -f ".claude/scripts/worktree-helpers.sh" ]; then
+  # Use worktree helper instead of piped command
+  source .claude/scripts/worktree-helpers.sh
+  MAIN_REPO=$(get_main_repo_path)
+  source "$MAIN_REPO/.claude/lib/project-env.sh"
 else
   echo "ERROR: project-env.sh not found. Run 'starforge install' first."
   exit 1
@@ -127,7 +132,7 @@ trigger_create_tickets() {
   local feature_name=$1
   local subtask_count=$2
   local breakdown_file=$3
-  
+
   create_trigger \
     "senior-engineer" \
     "tpm" \
@@ -135,4 +140,193 @@ trigger_create_tickets() {
     "$subtask_count subtasks ready for $feature_name" \
     "Use tpm. Create GitHub issues from senior-engineer's breakdown." \
     "{\"feature\": \"$feature_name\", \"subtasks\": $subtask_count, \"breakdown\": \"$breakdown_file\"}"
+}
+
+# ============================================================================
+# VALIDATION FUNCTIONS (Used by QA Engineer - Level 4 Verification)
+# ============================================================================
+
+# Find latest trigger file for an agent/action
+# Replaces: ls -t $STARFORGE_CLAUDE_DIR/triggers/orchestrator-assign_next_work-*.trigger 2>/dev/null | head -1
+get_latest_trigger_file() {
+  local agent=${1:-"orchestrator"}
+  local action=${2:-"assign_next_work"}
+
+  ls -t "$STARFORGE_CLAUDE_DIR/triggers/${agent}-${action}-"*.trigger 2>/dev/null | head -1
+}
+
+# Verify trigger file exists
+verify_trigger_exists() {
+  local trigger_file=$1
+
+  if [ ! -f "$trigger_file" ]; then
+    echo "❌ CRITICAL: Trigger file not found: $trigger_file"
+    return 1
+  fi
+
+  echo "✅ Trigger file exists: $trigger_file"
+  return 0
+}
+
+# Verify trigger is valid JSON
+verify_trigger_json() {
+  local trigger_file=$1
+
+  if [ ! -f "$trigger_file" ]; then
+    echo "❌ Trigger file not found"
+    return 1
+  fi
+
+  jq empty "$trigger_file" 2>/dev/null
+
+  if [ $? -ne 0 ]; then
+    echo "❌ TRIGGER INVALID JSON"
+    cat "$trigger_file"
+    return 1
+  fi
+
+  echo "✅ Trigger is valid JSON"
+  return 0
+}
+
+# Extract field from trigger (using jq)
+# Replaces: jq -r '.to_agent' "$TRIGGER_FILE"
+get_trigger_field() {
+  local trigger_file=$1
+  local field=$2
+
+  if [ ! -f "$trigger_file" ]; then
+    echo "❌ Trigger file not found"
+    return 1
+  fi
+
+  jq -r ".$field" "$trigger_file" 2>/dev/null
+}
+
+# Verify trigger has required fields
+verify_trigger_fields() {
+  local trigger_file=$1
+  local expected_to_agent=$2
+  local expected_action=$3
+
+  if [ ! -f "$trigger_file" ]; then
+    echo "❌ Trigger file not found"
+    return 1
+  fi
+
+  local to_agent=$(get_trigger_field "$trigger_file" "to_agent")
+  local action=$(get_trigger_field "$trigger_file" "action")
+
+  if [ "$to_agent" != "$expected_to_agent" ]; then
+    echo "❌ TRIGGER INCORRECT to_agent: expected '$expected_to_agent', got '$to_agent'"
+    return 1
+  fi
+
+  if [ "$action" != "$expected_action" ]; then
+    echo "❌ TRIGGER INCORRECT action: expected '$expected_action', got '$action'"
+    return 1
+  fi
+
+  echo "✅ Trigger fields correct: to_agent=$to_agent, action=$action"
+  return 0
+}
+
+# Verify trigger data integrity (Level 4 check)
+# Ensures count matches array length
+verify_trigger_data_integrity() {
+  local trigger_file=$1
+  local count_field=${2:-"context.count"}
+  local array_field=${3:-"context.completed_tickets"}
+
+  if [ ! -f "$trigger_file" ]; then
+    echo "❌ Trigger file not found"
+    return 1
+  fi
+
+  local count=$(jq -r ".$count_field" "$trigger_file" 2>/dev/null)
+  local array_length=$(jq -r ".$array_field | length" "$trigger_file" 2>/dev/null)
+
+  if [ "$count" != "$array_length" ]; then
+    echo "❌ TRIGGER DATA INTEGRITY FAILED"
+    echo "   Count ($count_field): $count"
+    echo "   Array length ($array_field): $array_length"
+    return 1
+  fi
+
+  echo "✅ Trigger data integrity verified: count=$count, array_length=$array_length"
+  return 0
+}
+
+# Full trigger verification (all checks)
+# Used by QA engineer after approval
+verify_trigger_complete() {
+  local trigger_file=$1
+  local expected_to_agent=$2
+  local expected_action=$3
+
+  echo ""
+  echo "🔍 Verifying trigger: $trigger_file"
+  echo ""
+
+  # Check 1: File exists
+  verify_trigger_exists "$trigger_file" || return 1
+
+  # Small delay for filesystem sync
+  sleep 1
+
+  # Check 2: Valid JSON
+  verify_trigger_json "$trigger_file" || return 1
+
+  # Check 3: Required fields
+  verify_trigger_fields "$trigger_file" "$expected_to_agent" "$expected_action" || return 1
+
+  # Check 4: Data integrity (if applicable)
+  if [[ "$expected_action" == "assign_next_work" ]]; then
+    verify_trigger_data_integrity "$trigger_file" "context.count" "context.completed_tickets" || return 1
+  fi
+
+  echo ""
+  echo "✅ TRIGGER VERIFICATION COMPLETE"
+  echo ""
+
+  return 0
+}
+
+# Count pending triggers for an agent
+count_pending_triggers() {
+  local agent=$1
+
+  if [ -z "$agent" ]; then
+    echo "0"
+    return 0
+  fi
+
+  local count=$(ls "$STARFORGE_CLAUDE_DIR/triggers/${agent}-"*.trigger 2>/dev/null | wc -l | tr -d ' ')
+
+  echo "$count"
+}
+
+# List all pending triggers
+list_pending_triggers() {
+  ls -t "$STARFORGE_CLAUDE_DIR/triggers/"*.trigger 2>/dev/null
+}
+
+# Move trigger to processed (after completion)
+archive_trigger() {
+  local trigger_file=$1
+
+  if [ ! -f "$trigger_file" ]; then
+    echo "❌ Trigger file not found"
+    return 1
+  fi
+
+  mv "$trigger_file" "$TRIGGER_DIR/processed/" 2>/dev/null
+
+  if [ $? -eq 0 ]; then
+    echo "✅ Trigger archived: $(basename $trigger_file)"
+    return 0
+  else
+    echo "❌ Failed to archive trigger"
+    return 1
+  fi
 }
