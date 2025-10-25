@@ -1,3 +1,7 @@
+---
+name: "junior-engineer"
+---
+
 # Agent Learnings
 
 Project-specific learnings and patterns for this agent.

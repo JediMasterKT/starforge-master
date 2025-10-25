@@ -150,6 +150,9 @@ archive_trigger() {
 # Progress Monitoring
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# monitor_agent_progress - Send periodic progress notifications
+# Args: $1=agent, $2=start_time, $3=ticket
+# Runs in background, sends notification every 5 minutes
 monitor_agent_progress() {
   local agent=$1
   local start_time=$2
@@ -223,9 +226,6 @@ invoke_agent() {
 
   # Invoke agent via Task tool using claude --print (non-interactive)
   log_event "TASKTOOL" "Invoking $to_agent via Task tool"
-
-  # Extract ticket from context (if present)
-  local ticket=$(jq -r '.context.ticket // "N/A"' "$trigger_file" 2>/dev/null || echo "N/A")
 
   # Send agent start notification (if Discord configured)
   if type send_agent_start_notification &>/dev/null; then

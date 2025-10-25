@@ -12,6 +12,53 @@ COLOR_INFO=3447003      # Blue
 COLOR_WARNING=16776960  # Yellow
 COLOR_ERROR=15158332    # Red
 
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Rate Limiting
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#
+# check_rate_limit <webhook_url>
+#
+# Enforces Discord's 5 requests per 2 seconds limit per webhook.
+# Returns 0 if safe to send, 1 if rate limited.
+#
+check_rate_limit() {
+  local webhook_url=$1
+
+  # Hash webhook URL for filename (last 10 chars for uniqueness)
+  local webhook_hash=$(echo -n "$webhook_url" | md5sum 2>/dev/null | cut -c1-10 || echo "default")
+  local rate_limit_file="/tmp/discord-rate-limit-${webhook_hash}.log"
+
+  # Get current timestamp
+  local now=$(date +%s)
+
+  # Create rate limit file if doesn't exist
+  touch "$rate_limit_file" 2>/dev/null || return 0  # Skip rate limiting if can't create file
+
+  # Remove timestamps older than 2 seconds
+  if [ -f "$rate_limit_file" ]; then
+    local cutoff=$((now - 2))
+    awk -v cutoff="$cutoff" '$1 > cutoff' "$rate_limit_file" > "${rate_limit_file}.tmp" 2>/dev/null || true
+    mv "${rate_limit_file}.tmp" "$rate_limit_file" 2>/dev/null || true
+  fi
+
+  # Count recent requests
+  local recent_count=$(wc -l < "$rate_limit_file" 2>/dev/null || echo "0")
+
+  # If 5 or more requests in last 2 seconds, rate limit
+  if [ "$recent_count" -ge 5 ]; then
+    return 1
+  fi
+
+  # Record this request
+  echo "$now" >> "$rate_limit_file"
+  return 0
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Webhook Routing
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 #
 # get_webhook_for_agent <agent_name>
 #
@@ -76,6 +123,15 @@ send_discord_daemon_notification() {
   # Silently skip if no webhook configured
   if [ -z "$webhook_url" ]; then
     return 0
+  fi
+
+  # Check rate limit (retry once if limited)
+  if ! check_rate_limit "$webhook_url"; then
+    sleep 1
+    if ! check_rate_limit "$webhook_url"; then
+      # Still rate limited - skip gracefully to avoid blocking daemon
+      return 0
+    fi
   fi
 
   # Generate ISO 8601 timestamp
@@ -198,4 +254,117 @@ send_agent_error_notification() {
     "**$agent** crashed with exit code $exit_code" \
     "$COLOR_ERROR" \
     "[{\"name\":\"Exit Code\",\"value\":\"$exit_code\",\"inline\":true},{\"name\":\"Duration\",\"value\":\"${duration_min}m\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]"
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# System Alert Notifications
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#
+# get_starforge_alerts_webhook
+#
+# Returns the webhook URL for system-level alerts (#starforge-alerts channel).
+# Falls back to generic webhook if not configured.
+#
+get_starforge_alerts_webhook() {
+  echo "${DISCORD_WEBHOOK_STARFORGE_ALERTS:-$DISCORD_WEBHOOK_URL}"
+}
+
+#
+# send_discord_system_notification <title> <description> <color> <fields_json>
+#
+# Sends a Discord embed notification to the #starforge-alerts channel.
+# Used for system-level events (daemon start/stop, invalid triggers, etc.)
+#
+send_discord_system_notification() {
+  local title=$1
+  local description=$2
+  local color=$3
+  local fields=${4:-[]}
+
+  # Get starforge-alerts webhook
+  local webhook_url=$(get_starforge_alerts_webhook)
+
+  # Skip if no webhook configured
+  if [ -z "$webhook_url" ]; then
+    return 0
+  fi
+
+  # Check rate limit
+  if ! check_rate_limit "$webhook_url"; then
+    sleep 1
+    if ! check_rate_limit "$webhook_url"; then
+      return 0
+    fi
+  fi
+
+  # Generate ISO 8601 timestamp
+  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+
+  # Build JSON payload
+  local payload=$(cat <<EOF
+{
+  "embeds": [{
+    "title": "$title",
+    "description": "$description",
+    "color": $color,
+    "fields": $fields,
+    "timestamp": "$timestamp",
+    "footer": {
+      "text": "StarForge System"
+    }
+  }]
+}
+EOF
+)
+
+  # Send asynchronously
+  curl -X POST "$webhook_url" \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    > /dev/null 2>&1 &
+}
+
+#
+# send_daemon_start_notification
+#
+# Notify when daemon starts (optional - only if webhook configured).
+#
+send_daemon_start_notification() {
+  send_discord_system_notification \
+    "🟢 Daemon Started" \
+    "StarForge daemon is now running" \
+    "$COLOR_SUCCESS" \
+    '[]'
+}
+
+#
+# send_daemon_stop_notification
+#
+# Notify when daemon stops (optional - only if webhook configured).
+#
+send_daemon_stop_notification() {
+  send_discord_system_notification \
+    "🔴 Daemon Stopped" \
+    "StarForge daemon has shut down" \
+    "$COLOR_WARNING" \
+    '[]'
+}
+
+#
+# send_trigger_invalid_notification <trigger_file> <validation_error>
+#
+# Notify when trigger is rejected for human visibility.
+#
+send_trigger_invalid_notification() {
+  local trigger_file=$1
+  local validation_error=$2
+
+  local fields='[{"name":"File","value":"'"$trigger_file"'","inline":false},{"name":"Error","value":"'"$validation_error"'","inline":false}]'
+
+  send_discord_system_notification \
+    "🚫 Invalid Trigger Rejected" \
+    "The daemon rejected a malformed trigger file" \
+    "$COLOR_ERROR" \
+    "$fields"
 }
