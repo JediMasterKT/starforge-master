@@ -76,3 +76,23 @@ check_context_files() {
 
     return $missing
 }
+
+# Count learning entries in learnings file
+# Replaces: grep -c "^##.*Learning" "$LEARNINGS" || echo "0"
+count_learnings() {
+    local learnings_file=$1
+
+    if [ -z "$learnings_file" ]; then
+        echo "❌ Learnings file path required"
+        return 1
+    fi
+
+    if [ ! -f "$learnings_file" ]; then
+        echo "0"
+        return 0  # Not an error, just no learnings yet
+    fi
+
+    local count=$(grep -c "^##.*Learning" "$learnings_file" 2>/dev/null || echo "0")
+
+    echo "$count"
+}
