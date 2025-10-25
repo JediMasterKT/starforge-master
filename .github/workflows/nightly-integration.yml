@@ -1,0 +1,355 @@
+name: Nightly Integration Test
+
+on:
+  # schedule:
+  #   # Run at 2 AM UTC every night (DISABLED to avoid automatic costs)
+  #   # Uncomment to enable automatic nightly runs (~$60-150/month)
+  #   - cron: '0 2 * * *'
+  workflow_dispatch: # Manual trigger only (FREE - only runs when you click "Run workflow")
+    inputs:
+      max_agents:
+        description: 'Number of concurrent agents'
+        required: false
+        default: '4'
+      test_duration:
+        description: 'Max test duration (minutes)'
+        required: false
+        default: '45'
+
+env:
+  TEST_REPO: JediMasterKT/starforge-master-test
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+jobs:
+  integration-test:
+    name: Full Agentic Workflow Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout StarForge
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Environment
+        run: |
+          # Install required tools
+          sudo apt-get update
+          sudo apt-get install -y jq curl git
+
+          # Verify gh CLI (comes pre-installed)
+          gh --version
+
+      - name: Authenticate GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | gh auth login --with-token
+          gh auth status
+
+      - name: Clone Test Repository
+        run: |
+          cd /tmp
+          gh repo clone $TEST_REPO
+          cd starforge-master-test
+          git config user.email "starforge-ci@test.com"
+          git config user.name "StarForge CI"
+
+      - name: Reset Test Environment
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Close any open PRs from previous runs
+          echo "🧹 Cleaning up previous test artifacts..."
+          gh pr list --repo $TEST_REPO --state open --json number --jq '.[].number' | while read pr; do
+            gh pr close $pr --repo $TEST_REPO --comment "Closed by nightly test reset"
+          done
+
+          # Reset trigger files
+          rm -rf .claude/triggers/*.trigger
+
+          # Remove worktree branches from previous runs
+          for branch in $(git branch -r | grep 'feature/ticket-' | sed 's/origin\///'); do
+            git push origin --delete "$branch" || true
+          done
+
+          # Prune local references
+          git fetch --prune
+
+      - name: Create Fresh Test Tickets
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Create 4 new test issues
+          echo "📋 Creating fresh test issues..."
+
+          ISSUE_1=$(gh issue create \
+            --repo $TEST_REPO \
+            --title "[Nightly Test] Feature: Add User Search" \
+            --label "feature,P1,nightly-test" \
+            --body "## Test Issue 1
+          Implement user search functionality.
+
+          **Acceptance Criteria:**
+          - [ ] Add search endpoint
+          - [ ] Implement search logic
+          - [ ] Return filtered results
+
+          **Created by:** Nightly Integration Test
+          **Run Date:** $(date -u +%Y-%m-%d)" | grep -oE '#[0-9]+' | tr -d '#')
+
+          ISSUE_2=$(gh issue create \
+            --repo $TEST_REPO \
+            --title "[Nightly Test] Feature: Add User Sorting" \
+            --label "feature,P1,nightly-test" \
+            --body "## Test Issue 2
+          Implement user sorting functionality.
+
+          **Acceptance Criteria:**
+          - [ ] Add sort parameter
+          - [ ] Implement sorting logic
+          - [ ] Support multiple sort fields
+
+          **Created by:** Nightly Integration Test
+          **Run Date:** $(date -u +%Y-%m-%d)" | grep -oE '#[0-9]+' | tr -d '#')
+
+          ISSUE_3=$(gh issue create \
+            --repo $TEST_REPO \
+            --title "[Nightly Test] Feature: Add Pagination" \
+            --label "feature,P1,nightly-test" \
+            --body "## Test Issue 3
+          Implement pagination for user listings.
+
+          **Acceptance Criteria:**
+          - [ ] Add page/limit parameters
+          - [ ] Implement pagination logic
+          - [ ] Return pagination metadata
+
+          **Created by:** Nightly Integration Test
+          **Run Date:** $(date -u +%Y-%m-%d)" | grep -oE '#[0-9]+' | tr -d '#')
+
+          ISSUE_4=$(gh issue create \
+            --repo $TEST_REPO \
+            --title "[Nightly Test] Feature: Add User Filtering" \
+            --label "feature,P1,nightly-test" \
+            --body "## Test Issue 4
+          Implement advanced user filtering.
+
+          **Acceptance Criteria:**
+          - [ ] Add filter parameters
+          - [ ] Implement filter logic
+          - [ ] Support multiple filters
+
+          **Created by:** Nightly Integration Test
+          **Run Date:** $(date -u +%Y-%m-%d)" | grep -oE '#[0-9]+' | tr -d '#')
+
+          echo "ISSUE_1=$ISSUE_1" >> $GITHUB_ENV
+          echo "ISSUE_2=$ISSUE_2" >> $GITHUB_ENV
+          echo "ISSUE_3=$ISSUE_3" >> $GITHUB_ENV
+          echo "ISSUE_4=$ISSUE_4" >> $GITHUB_ENV
+
+          echo "✅ Created issues: #$ISSUE_1, #$ISSUE_2, #$ISSUE_3, #$ISSUE_4"
+
+      - name: Configure Parallel Daemon
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Create .env with parallel daemon config
+          cat > .env << EOF
+          export PARALLEL_DAEMON=true
+          export MAX_CONCURRENT_AGENTS=${{ github.event.inputs.max_agents || '4' }}
+          export DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+          EOF
+
+          echo "✅ Daemon configured for ${{ github.event.inputs.max_agents || '4' }} concurrent agents"
+
+      - name: Create Trigger Files
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Create trigger files for each issue
+          cat > .claude/triggers/junior-dev-a.trigger << EOF
+          Implement GitHub Issue #$ISSUE_1
+          Please implement the feature described in the issue.
+          EOF
+
+          cat > .claude/triggers/junior-dev-b.trigger << EOF
+          Implement GitHub Issue #$ISSUE_2
+          Please implement the feature described in the issue.
+          EOF
+
+          cat > .claude/triggers/junior-dev-c.trigger << EOF
+          Implement GitHub Issue #$ISSUE_3
+          Please implement the feature described in the issue.
+          EOF
+
+          cat > .claude/triggers/junior-dev-d.trigger << EOF
+          Implement GitHub Issue #$ISSUE_4
+          Please implement the feature described in the issue.
+          EOF
+
+          echo "✅ Created 4 trigger files"
+
+      - name: Start Daemon and Monitor
+        timeout-minutes: ${{ fromJSON(github.event.inputs.test_duration || '45') }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Start daemon in background
+          source .env
+          nohup bash .claude/bin/daemon-runner.sh > /tmp/daemon-output.log 2>&1 &
+          DAEMON_PID=$!
+
+          echo "🚀 Daemon started with PID: $DAEMON_PID"
+          echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
+
+          # Monitor daemon execution
+          TIMEOUT=${{ fromJSON(github.event.inputs.test_duration || '45') }}
+          START_TIME=$(date +%s)
+
+          while kill -0 $DAEMON_PID 2>/dev/null; do
+            ELAPSED=$(( $(date +%s) - START_TIME ))
+
+            # Check for timeout
+            if [ $ELAPSED -gt $((TIMEOUT * 60)) ]; then
+              echo "⏰ Timeout reached after $ELAPSED seconds"
+              kill $DAEMON_PID
+              break
+            fi
+
+            # Print status every 5 minutes
+            if [ $((ELAPSED % 300)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+              echo "📊 Status at $(($ELAPSED / 60)) minutes:"
+              echo "   - Daemon running: ✓"
+              echo "   - Agent slots: $(cat .claude/daemon/agent-slots.json 2>/dev/null || echo '{}')"
+              tail -20 /tmp/daemon-output.log | grep -E '(COMPLETE|ERROR|START|STOP)' || true
+            fi
+
+            # Check if all issues have PRs
+            PR_COUNT=$(gh pr list --repo $TEST_REPO --state open --label nightly-test --json number --jq 'length')
+            if [ "$PR_COUNT" -ge 4 ]; then
+              echo "✅ All 4 PRs created! Daemon can shutdown gracefully."
+              kill $DAEMON_PID
+              break
+            fi
+
+            sleep 30
+          done
+
+          echo "🏁 Daemon execution complete"
+
+      - name: Collect Results
+        if: always()
+        run: |
+          cd /tmp/starforge-master-test
+
+          echo "## Nightly Integration Test Results" > /tmp/test-results.md
+          echo "" >> /tmp/test-results.md
+          echo "**Date:** $(date -u)" >> /tmp/test-results.md
+          echo "**Duration:** ${{ github.event.inputs.test_duration || '45' }} minutes max" >> /tmp/test-results.md
+          echo "**Concurrent Agents:** ${{ github.event.inputs.max_agents || '4' }}" >> /tmp/test-results.md
+          echo "" >> /tmp/test-results.md
+
+          # Count PRs created
+          PR_COUNT=$(gh pr list --repo $TEST_REPO --state all --label nightly-test --json number --jq 'length')
+          echo "### Pull Requests: $PR_COUNT / 4" >> /tmp/test-results.md
+
+          # List PRs
+          gh pr list --repo $TEST_REPO --state all --label nightly-test --json number,title,state >> /tmp/test-results.md
+
+          # Check agent slots
+          echo "" >> /tmp/test-results.md
+          echo "### Agent Slots (Final State)" >> /tmp/test-results.md
+          cat .claude/daemon/agent-slots.json >> /tmp/test-results.md || echo "No slots file" >> /tmp/test-results.md
+
+          # Daemon logs (last 50 lines)
+          echo "" >> /tmp/test-results.md
+          echo "### Daemon Log (Last 50 Lines)" >> /tmp/test-results.md
+          tail -50 /tmp/daemon-output.log >> /tmp/test-results.md || echo "No log file" >> /tmp/test-results.md
+
+          cat /tmp/test-results.md
+
+      - name: Validate Success Criteria
+        id: validate
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Count successful PRs
+          PR_COUNT=$(gh pr list --repo $TEST_REPO --state all --label nightly-test --json number --jq 'length')
+
+          echo "pr_count=$PR_COUNT" >> $GITHUB_OUTPUT
+
+          # Success if at least 3/4 PRs were created (75% success rate)
+          if [ "$PR_COUNT" -ge 3 ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ TEST PASSED: $PR_COUNT/4 PRs created"
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "❌ TEST FAILED: Only $PR_COUNT/4 PRs created"
+            exit 1
+          fi
+
+      - name: Upload Test Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-test-results-${{ github.run_number }}
+          path: |
+            /tmp/test-results.md
+            /tmp/daemon-output.log
+          retention-days: 30
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          PR_COUNT="${{ steps.validate.outputs.pr_count }}"
+          STATUS="${{ steps.validate.outputs.status }}"
+
+          if [ "$STATUS" = "success" ]; then
+            COLOR="3066993"  # Green
+            EMOJI="✅"
+          else
+            COLOR="15158332"  # Red
+            EMOJI="❌"
+          fi
+
+          curl -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"$EMOJI Nightly Integration Test Complete\",
+                \"description\": \"StarForge end-to-end workflow test\",
+                \"color\": $COLOR,
+                \"fields\": [
+                  {\"name\": \"Status\", \"value\": \"$STATUS\", \"inline\": true},
+                  {\"name\": \"PRs Created\", \"value\": \"$PR_COUNT / 4\", \"inline\": true},
+                  {\"name\": \"Concurrent Agents\", \"value\": \"${{ github.event.inputs.max_agents || '4' }}\", \"inline\": true},
+                  {\"name\": \"Repository\", \"value\": \"$TEST_REPO\", \"inline\": false},
+                  {\"name\": \"Run\", \"value\": \"[View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"inline\": false}
+                ],
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
+            }"
+
+      - name: Comment on Failed Issues
+        if: failure()
+        run: |
+          cd /tmp/starforge-master-test
+
+          # Find issues that didn't get PRs
+          for issue in $ISSUE_1 $ISSUE_2 $ISSUE_3 $ISSUE_4; do
+            # Check if PR exists for this issue
+            PR_EXISTS=$(gh pr list --repo $TEST_REPO --search "issue:$issue" --json number --jq 'length')
+
+            if [ "$PR_EXISTS" -eq 0 ]; then
+              gh issue comment $issue --repo $TEST_REPO --body "❌ Nightly integration test failed to create PR for this issue.
+
+              **Test Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              **Date:** $(date -u)"
+            fi
+          done
