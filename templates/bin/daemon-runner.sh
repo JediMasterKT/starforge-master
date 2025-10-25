@@ -147,33 +147,34 @@ invoke_agent() {
     return 1
   fi
 
-  # WORKAROUND: Daemon mode - agents run non-interactively
-  # TODO: Implement proper non-interactive agent invocation
-  # For now, we simulate successful execution to test daemon functionality
+  # Extract additional context from trigger
+  local message=$(jq -r '.message // ""' "$trigger_file" 2>/dev/null || echo "")
+  local ticket=$(jq -r '.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
+  local command=$(jq -r '.command // ""' "$trigger_file" 2>/dev/null || echo "")
 
-  log_event "INFO" "Simulating agent execution (daemon mode workaround)"
+  # Build prompt for agent
+  local prompt="Task from $from_agent: $action"
+  [ -n "$message" ] && prompt="$prompt\n\nMessage: $message"
+  [ -n "$ticket" ] && prompt="$prompt\nTicket: $ticket"
+  [ -n "$command" ] && prompt="$prompt\n\nCommand: $command"
+  prompt="$prompt\n\nTrigger file: $trigger_file"
 
-  # Simulate agent work (2 second delay)
-  sleep 2
+  # Invoke agent via Task tool using claude --print (non-interactive)
+  log_event "TASKTOOL" "Invoking $to_agent via Task tool"
 
-  local duration=$(($(date +%s) - start_time))
-  log_event "COMPLETE" "$to_agent completed in ${duration}s (simulated)"
-  return 0
-
-  # ORIGINAL CODE (disabled until non-interactive mode is implemented):
-  # if timeout "$AGENT_TIMEOUT" starforge use "$to_agent" >> "$LOG_FILE" 2>&1; then
-  #   local duration=$(($(date +%s) - start_time))
-  #   log_event "COMPLETE" "$to_agent completed in ${duration}s"
-  #   return 0
-  # else
-  #   local exit_code=$?
-  #   if [ $exit_code -eq 124 ]; then
-  #     log_event "ERROR" "$to_agent timed out after ${AGENT_TIMEOUT}s"
-  #   else
-  #     log_event "ERROR" "$to_agent failed (exit: $exit_code)"
-  #   fi
-  #   return 1
-  # fi
+  if timeout "$AGENT_TIMEOUT" claude --print --permission-mode bypassPermissions "Use the $to_agent agent. $prompt" >> "$LOG_FILE" 2>&1; then
+    local duration=$(($(date +%s) - start_time))
+    log_event "COMPLETE" "$to_agent completed in ${duration}s"
+    return 0
+  else
+    local exit_code=$?
+    if [ $exit_code -eq 124 ]; then
+      log_event "ERROR" "$to_agent timed out after ${AGENT_TIMEOUT}s"
+    else
+      log_event "ERROR" "$to_agent failed (exit: $exit_code)"
+    fi
+    return 1
+  fi
 }
 
 invoke_agent_with_retry() {
@@ -316,11 +317,57 @@ resume_processing() {
 
 cleanup_and_exit() {
   log_event "STOP" "Daemon shutting down gracefully"
+
+  # Kill orchestrator background process if running
+  if [ -n "$ORCHESTRATOR_PID" ] && kill -0 "$ORCHESTRATOR_PID" 2>/dev/null; then
+    log_event "STOP" "Stopping orchestrator process (PID: $ORCHESTRATOR_PID)"
+    kill "$ORCHESTRATOR_PID" 2>/dev/null
+  fi
+
   save_state ""
   exit 0
 }
 
 trap cleanup_and_exit SIGTERM SIGINT
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Orchestrator Periodic Check
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+orchestrator_check() {
+  while true; do
+    log_event "ORCHESTRATOR" "Running periodic check for ready issues"
+
+    # Invoke orchestrator via Task tool to check for work and create triggers
+    # IMPORTANT: Use imperative prompt - orchestrator is running autonomously in daemon mode
+    if claude --print --permission-mode bypassPermissions "You are the orchestrator agent running in AUTONOMOUS DAEMON MODE.
+
+CRITICAL: All permissions are PRE-APPROVED. Execute commands IMMEDIATELY without asking for confirmation or listing what you plan to do.
+
+Execute this workflow NOW:
+
+1. Run: gh issue list --label ready --json number,title,labels
+2. Run: gh pr list --json number,title,labels
+3. Read coordination status files in .claude/coordination/
+4. For any idle junior-dev agent with a ready issue: create trigger file in .claude/triggers/
+5. For any qa-approved PR: merge it directly
+
+DO NOT:
+- Ask \"Would you like me to proceed?\"
+- List commands for approval
+- Request permission for ANY operation
+- Explain what you're going to do - just DO IT
+
+All bash commands (gh, git, jq, cat, grep, etc.) are pre-approved in .claude/settings.json. Execute them directly. This is non-interactive batch mode." >> "$LOG_FILE" 2>&1; then
+      log_event "ORCHESTRATOR" "Check complete"
+    else
+      log_event "ERROR" "Orchestrator check failed (exit: $?)"
+    fi
+
+    # Wait 60 seconds before next check
+    sleep 60
+  done
+}
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Main Daemon Loop
@@ -343,6 +390,11 @@ main() {
 
   # Resume from previous state
   resume_processing
+
+  # Start orchestrator periodic check loop in background
+  log_event "ORCHESTRATOR" "Starting orchestrator periodic check (60s interval)"
+  orchestrator_check &
+  ORCHESTRATOR_PID=$!
 
   log_event "MONITOR" "Watching $TRIGGER_DIR for new triggers"
 
