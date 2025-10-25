@@ -34,26 +34,9 @@ Execute well-defined tickets using TDD. Work in dedicated worktree.
 **Run BEFORE any work. NO EXCEPTIONS.**
 
 ```bash
-# 0. Source environment library (MUST be first)
-# Load helper scripts
-source .claude/scripts/worktree-helpers.sh
-
-# Get main repo path using helper
-_MAIN_REPO=$(get_main_repo_path)
-
-if [ ! -f "$_MAIN_REPO/.claude/lib/project-env.sh" ]; then
-  echo "❌ ERROR: project-env.sh not found at $_MAIN_REPO/.claude/lib/project-env.sh"
-  echo "   This worktree may be corrupted or outdated"
-  exit 1
-fi
-
-source "$_MAIN_REPO/.claude/lib/project-env.sh"
-
-# Load additional helpers
-source "$_MAIN_REPO/.claude/scripts/context-helpers.sh"
-source "$_MAIN_REPO/.claude/scripts/github-helpers.sh"
-source "$_MAIN_REPO/.claude/scripts/test-helpers.sh"
-source "$_MAIN_REPO/.claude/scripts/trigger-helpers.sh"
+# 0. Load project environment and all helper scripts (bundled initialization)
+# Note: agent-init.sh handles main repo detection for worktrees
+source .claude/scripts/agent-init.sh
 
 # 1. Verify identity and location
 AGENT_ID="$STARFORGE_AGENT_ID"
@@ -321,6 +304,111 @@ pytest tests/test_feature.py -v
 # Expected: FAILED (function doesn't exist yet)
 # If passes: Something wrong, tests not actually testing new code
 ```
+
+### Step 3.5: Write Integration Tests (MANDATORY FOR ALL PRs)
+
+**CRITICAL:** QA-engineer will DECLINE your PR if integration tests are missing.
+
+Integration tests verify your feature works with real dependencies (not mocks). CI runs these automatically.
+
+**Create:** `tests/integration/test_<feature>.sh` OR `tests/integration/test_<feature>.py`
+
+**Bash Example:**
+```bash
+#!/bin/bash
+# tests/integration/test_permission_bundling.sh
+#
+# Integration test for permission bundling feature
+#
+
+set -e
+
+# Setup: Create test environment
+TEST_DIR=$(mktemp -d)
+cd "$TEST_DIR"
+
+# Execute: Run actual workflow with bundled permissions
+result=$(your_command_that_uses_bundled_permissions)
+
+# Assert: Verify only 1 prompt instead of 3
+prompt_count=$(echo "$result" | grep "Permission request" | wc -l)
+if [ "$prompt_count" -ne 1 ]; then
+  echo "❌ FAIL: Expected 1 prompt, got $prompt_count"
+  exit 1
+fi
+
+# Teardown
+cd - && rm -rf "$TEST_DIR"
+
+echo "✅ PASS: Permission bundling integration test"
+```
+
+**Python Example:**
+```python
+# tests/integration/test_permission_bundling.py
+"""Integration tests for permission bundling feature"""
+
+def test_permission_bundling_reduces_prompts():
+    """Verify bundled permissions reduce Claude Code prompts."""
+    # Setup: Create test agent with bundled permissions
+    agent = create_test_agent_with_bundling()
+
+    # Execute: Run workflow that needs Read+Grep+Bash
+    result = agent.run_workflow()
+
+    # Assert: Only 1 prompt (not 3)
+    assert result.prompt_count == 1, f"Expected 1 prompt, got {result.prompt_count}"
+
+def test_permission_bundling_error_handling():
+    """Verify bundled permissions handle errors gracefully."""
+    # Setup: Create invalid permission bundle
+    agent = create_test_agent_with_invalid_bundle()
+
+    # Execute: Attempt to use bundled permissions
+    result = agent.run_workflow()
+
+    # Assert: Graceful error message
+    assert result.status == "error"
+    assert "invalid bundle" in result.message.lower()
+
+def test_permission_bundling_performance():
+    """Verify bundled permissions meet performance targets."""
+    import time
+
+    # Setup
+    agent = create_test_agent_with_bundling()
+
+    # Execute and measure
+    start = time.time()
+    result = agent.run_workflow()
+    duration = time.time() - start
+
+    # Assert: Performance target (from TECH_STACK.md)
+    assert duration < 2.0, f"Too slow: {duration}s (target: <2s)"
+```
+
+**What to test:**
+1. **Happy path end-to-end** - Feature works with real dependencies
+2. **Error handling** - Graceful failures with clear error messages
+3. **Performance** - Meets targets from TECH_STACK.md
+4. **Edge cases** - Empty input, max input, concurrent access
+
+**Run integration tests:**
+```bash
+# Bash
+bash tests/integration/test_<feature>.sh
+
+# Python
+pytest tests/integration/test_<feature>.py -v
+
+# Expected: ALL PASS
+```
+
+**Why integration tests matter:**
+- Unit tests use mocks - integration tests use REAL dependencies
+- CI runs these automatically on every PR
+- qa-engineer verifies you wrote them (Gate 2)
+- Missing integration tests = PR DECLINED
 
 ### Step 4: Implement (Green Phase)
 

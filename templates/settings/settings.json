@@ -58,7 +58,12 @@
       "Bash(./bin/test-* *)",
       "Bash(starforge *)",
       "Bash(claude *)",
-      "Bash({{PROJECT_DIR}}/.claude/scripts/* *)"
+      "Bash({{PROJECT_DIR}}/.claude/scripts/* *)",
+      "Bash(.claude/scripts/agent-init.sh)",
+      "Bash(source .claude/scripts/agent-init.sh)",
+      "Bash(source {{PROJECT_DIR}}/.claude/scripts/agent-init.sh)",
+      "Bash(.claude/scripts/orchestrator-assign.sh * *)",
+      "Bash({{PROJECT_DIR}}/.claude/scripts/orchestrator-assign.sh * *)"
     ],
     "deny": [
       "Bash(rm -rf /:*)",

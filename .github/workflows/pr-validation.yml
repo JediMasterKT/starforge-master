@@ -5,25 +5,31 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  unit-tests:
-    name: Unit Tests
+  # Shared setup for all test jobs
+  setup:
+    name: Setup Dependencies
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up dependencies
+      - name: Cache dependencies
+        id: cache-deps
+        uses: actions/cache@v3
+        with:
+          path: |
+            /usr/bin/jq
+            /usr/bin/gh
+          key: ${{ runner.os }}-deps-v1
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
-          # Install required tools
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Install GitHub CLI
-        run: |
-          # Install gh CLI for testing
-          type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)
+          # Install gh CLI
+          type -p wget >/dev/null || sudo apt-get install wget -y
           sudo mkdir -p -m 755 /etc/apt/keyrings
           wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
           sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
@@ -31,41 +37,363 @@ jobs:
           sudo apt update
           sudo apt install gh -y
 
-      - name: Make test scripts executable
+  # Job 1: Installation Tests
+  test-install:
+    name: Installation Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
         run: |
+          sudo apt-get update && sudo apt-get install -y jq
           chmod +x bin/test-install.sh
-          chmod +x bin/test-cli.sh
-
-      - name: Run installation tests
-        id: test-install
-        run: |
-          set -o pipefail
-          bin/test-install.sh 2>&1 | tee test-install-output.log
-        continue-on-error: false
-
-      - name: Run CLI tests
-        id: test-cli
-        run: |
-          set -o pipefail
-          bin/test-cli.sh 2>&1 | tee test-cli-output.log
-        continue-on-error: false
-
-      - name: Upload test results
+      - name: Run tests
+        run: bin/test-install.sh 2>&1 | tee test-install.log
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: |
-            test-install-output.log
-            test-cli-output.log
-          retention-days: 30
-          if-no-files-found: warn
+          name: test-install-results
+          path: test-install.log
 
-      - name: Check test results
-        if: always()
+  # Job 2: CLI Tests
+  test-cli:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
         run: |
-          if [ "${{ steps.test-install.outcome }}" != "success" ] || [ "${{ steps.test-cli.outcome }}" != "success" ]; then
-            echo "Tests failed! Check the artifacts for details."
-            exit 1
-          fi
-          echo "All tests passed!"
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-cli.sh
+      - name: Run tests
+        run: bin/test-cli.sh 2>&1 | tee test-cli.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-cli-results
+          path: test-cli.log
+
+  # Job 3: Foundation Tests
+  test-foundation:
+    name: Foundation Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-foundation.sh
+      - name: Run tests
+        run: bin/test-foundation.sh 2>&1 | tee test-foundation.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-foundation-results
+          path: test-foundation.log
+
+  # Job 4: Router Tests
+  test-router:
+    name: Router Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-router.sh
+      - name: Run tests
+        run: bin/test-router.sh 2>&1 | tee test-router.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-router-results
+          path: test-router.log
+
+  # Job 5: Logger Tests
+  test-logger:
+    name: Logger Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-logger.sh
+      - name: Run tests
+        run: bin/test-logger.sh 2>&1 | tee test-logger.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logger-results
+          path: test-logger.log
+
+  # Job 6: Routing Tests
+  test-routing:
+    name: Routing Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-routing.sh
+      - name: Run tests
+        run: bin/test-routing.sh 2>&1 | tee test-routing.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-routing-results
+          path: test-routing.log
+
+  # Job 7: Hardcoded Patterns Tests
+  test-hardcoded-patterns:
+    name: Hardcoded Patterns Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-hardcoded-patterns.sh
+      - name: Run tests
+        run: bin/test-hardcoded-patterns.sh 2>&1 | tee test-hardcoded-patterns.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-hardcoded-patterns-results
+          path: test-hardcoded-patterns.log
+
+  # Job 8: Fresh Install E2E Tests
+  test-fresh-install-e2e:
+    name: Fresh Install E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-fresh-install-e2e.sh
+      - name: Run tests
+        run: bin/test-fresh-install-e2e.sh 2>&1 | tee test-fresh-install-e2e.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-fresh-install-e2e-results
+          path: test-fresh-install-e2e.log
+
+  # Job 9: GitHub Workflow Tests
+  test-github-workflow:
+    name: GitHub Workflow Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-github-workflow.sh
+      - name: Run tests
+        run: bin/test-github-workflow.sh 2>&1 | tee test-github-workflow.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-github-workflow-results
+          path: test-github-workflow.log
+
+  # Job 10: Settings Permissions Tests
+  test-settings-permissions:
+    name: Settings Permissions Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-settings-permissions.sh
+      - name: Run tests
+        run: bin/test-settings-permissions.sh 2>&1 | tee test-settings-permissions.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-settings-permissions-results
+          path: test-settings-permissions.log
+
+  # Job 11: Senior Engineer Tests
+  test-senior-engineer:
+    name: Senior Engineer Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-senior-engineer.sh
+      - name: Run tests
+        run: bin/test-senior-engineer.sh 2>&1 | tee test-senior-engineer.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-senior-engineer-results
+          path: test-senior-engineer.log
+
+  # Job 12: TPM Refactoring Tests
+  test-tpm-refactoring:
+    name: TPM Refactoring Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-tpm-refactoring.sh
+      - name: Run tests
+        run: bin/test-tpm-refactoring.sh 2>&1 | tee test-tpm-refactoring.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-tpm-refactoring-results
+          path: test-tpm-refactoring.log
+
+  # Job 13: Junior Engineer Template Tests
+  test-junior-engineer-template:
+    name: Junior Engineer Template Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-junior-engineer-template.sh
+      - name: Run tests
+        run: bin/test-junior-engineer-template.sh 2>&1 | tee test-junior-engineer-template.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-junior-engineer-template-results
+          path: test-junior-engineer-template.log
+
+  # Job 14: GitHub Helpers Tests
+  test-github-helpers:
+    name: GitHub Helpers Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-github-helpers-new.sh
+      - name: Run tests
+        run: bin/test-github-helpers-new.sh 2>&1 | tee test-github-helpers.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-github-helpers-results
+          path: test-github-helpers.log
+
+  # Job 15: Sandbox Tests
+  test-sandbox:
+    name: Sandbox Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x bin/test-sandbox.sh
+      - name: Run tests
+        run: bin/test-sandbox.sh 2>&1 | tee test-sandbox.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-sandbox-results
+          path: test-sandbox.log
+
+  # Job 16: E2E Test Suite
+  test-e2e:
+    name: E2E Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          chmod +x tests/e2e/*.sh
+      - name: Run architecture flow tests
+        run: tests/e2e/test-architecture-flow.sh 2>&1 | tee e2e-architecture.log
+      - name: Run daemon tests
+        run: tests/e2e/test-daemon.sh 2>&1 | tee e2e-daemon.log
+      - name: Run helpers tests
+        run: tests/e2e/test-helpers.sh 2>&1 | tee e2e-helpers.log
+      - name: Run PR safety tests
+        run: tests/e2e/test-pr-safety.sh 2>&1 | tee e2e-pr-safety.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-e2e-results
+          path: e2e-*.log
+
+  # Job 17: Documentation Check
+  test-documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: chmod +x bin/check-documentation.sh
+      - name: Run documentation check
+        run: bin/check-documentation.sh 2>&1 | tee documentation-check.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-check-results
+          path: documentation-check.log

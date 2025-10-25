@@ -12,17 +12,8 @@ Convert Senior Engineer breakdowns into actionable GitHub Issues. Keep queue ≥
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 0. Source project environment
-if [ -f .claude/lib/project-env.sh ]; then
-  source .claude/lib/project-env.sh
-else
-  echo "❌ project-env.sh not found"
-  exit 1
-fi
-
-# 0.1. Source helper scripts
-source "$STARFORGE_CLAUDE_DIR/scripts/context-helpers.sh"
-source "$STARFORGE_CLAUDE_DIR/scripts/github-helpers.sh"
+# 0. Load project environment and all helper scripts (bundled initialization)
+source .claude/scripts/agent-init.sh
 
 # 1. Verify location (using dynamic path)
 if [ ! -d "$STARFORGE_MAIN_REPO" ]; then

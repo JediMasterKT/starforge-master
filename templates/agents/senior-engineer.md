@@ -12,9 +12,8 @@ Analyze requirements, design solutions, create implementable subtasks with test 
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 0. Source project environment and helper scripts
-source templates/lib/project-env.sh
-source templates/scripts/context-helpers.sh
+# 0. Load project environment and all helper scripts (bundled initialization)
+source .claude/scripts/agent-init.sh
 
 # 1. Verify location (main repo)
 if [[ "$PWD" != "$STARFORGE_MAIN_REPO" ]]; then

@@ -12,13 +12,8 @@ Manage 3 junior-devs working in parallel. Maximize throughput, ensure quality.
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 0. Load project environment
-source .claude/lib/project-env.sh
-
-# Load helper scripts
-source .claude/scripts/context-helpers.sh
-source .claude/scripts/github-helpers.sh
-source .claude/scripts/worktree-helpers.sh
+# 0. Load project environment and all helper scripts (bundled initialization)
+source .claude/scripts/agent-init.sh
 
 # 1. Verify location (main repo)
 verify_main_repo || exit 1
@@ -152,7 +147,7 @@ jq -n \
   }' > "$STATUS_FILE"
 
 # 4. IMMEDIATELY trigger agent (same operation - cannot be skipped)
-source .claude/scripts/trigger-helpers.sh
+# Note: trigger-helpers.sh already loaded by agent-init.sh
 trigger_junior_dev "$AGENT" $TICKET
 
 # 4. VERIFY TRIGGER (MANDATORY - Level 4 verification)
@@ -337,7 +332,7 @@ get_qa_declined_prs | while IFS='|' read -r PR_NUMBER TITLE AUTHOR; do
   echo "✅ Issue #$TICKET labels updated: ready/completed → in-progress"
 
   # Create trigger for agent to fix the PR
-  source .claude/scripts/trigger-helpers.sh
+  # Note: trigger-helpers.sh already loaded by agent-init.sh
   TRIGGER_FILE="$STARFORGE_CLAUDE_DIR/triggers/${AGENT}-fix_pr-$(date +%s).trigger"
 
   cat > "$TRIGGER_FILE" << EOF
