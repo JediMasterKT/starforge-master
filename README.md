@@ -12,6 +12,21 @@ StarForge is a portable package of specialized AI agents that work together to b
 - **QA Engineer**: Reviews code, validates implementations, runs tests
 - **TPM Agent**: Creates GitHub Issues from breakdowns for task tracking
 
+## Experience Vision
+
+**StarForge should feel like Slack + GitHub for an AI team.**
+
+Interact with StarForge the same way you work with human engineers:
+1. **Describe what you want** - Natural language, wherever you're comfortable
+2. **Walk away** - Agents work autonomously, no babysitting required
+3. **Get notified** - Discord/email updates at key milestones
+4. **Review output** - GitHub PRs, just like human team members
+5. **Provide feedback** - Approve, request changes, iterate
+
+**Current State**: Building toward this vision. Today you'll use CLI commands, but we're working toward fire-and-forget autonomy.
+
+For the complete UX vision and roadmap, see [docs/UX-VISION.md](docs/UX-VISION.md).
+
 ## Features
 
 - **🚀 One-Command Installation**: `starforge install` sets up everything
