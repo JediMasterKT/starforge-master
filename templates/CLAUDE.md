@@ -49,3 +49,48 @@ cat "$STARFORGE_CLAUDE_DIR/agents/agent-learnings/${AGENT}/learnings.md"
 ```
 
 **No exceptions. This ensures consistency and applies past learnings.**
+
+---
+
+## Product Vision: User Experience
+
+**IMPORTANT**: When building or improving StarForge features, always align with the UX vision.
+
+**Core Principle**: StarForge should feel like Slack + GitHub for an AI team.
+
+### The Benchmark
+
+Users should interact with StarForge the same way they work with human engineers:
+1. **Describe what you want** (natural language)
+2. **Walk away** (autonomous execution)
+3. **Get notified** (Discord, email, PR notifications)
+4. **Review output** (GitHub PRs)
+5. **Provide feedback** (approve, request changes)
+
+### Decision Framework
+
+Before implementing any feature, ask: **"Does this make StarForge feel more like a human team?"**
+
+**Examples**:
+- ❌ **Bad**: User must create JSON trigger file manually → No human team requires JSON to start work
+- ✅ **Good**: User says "work on ticket #42" → Exactly how you'd delegate to humans
+
+- ❌ **Bad**: User approves every file read → You don't micromanage human engineers
+- ✅ **Good**: One-time trust grant for project scope → Like giving engineer repo access
+
+- ❌ **Bad**: User watches agent work in terminal → You don't sit behind devs watching them code
+- ✅ **Good**: User gets Discord notification when PR ready → Like human posting "PR up for review"
+
+### Key Targets
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Permission prompts per feature | 50+ | <5 |
+| Active supervision time | Continuous | <5 min |
+| Async capability | 0% | 100% |
+
+### Full Vision Document
+
+For complete details, see: **[docs/UX-VISION.md](../docs/UX-VISION.md)**
+
+**Use this vision to guide all feature development, agent design, and user interaction decisions.**

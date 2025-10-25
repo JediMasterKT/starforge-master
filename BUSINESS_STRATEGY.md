@@ -534,6 +534,81 @@ StarForge is **absolutely** a viable business opportunity. The "wrapper" critici
 
 ---
 
+## User Experience Vision
+
+StarForge's success depends on nailing the user experience. The technical architecture is table stakes—the UX is the differentiation.
+
+**Core Principle**: StarForge should feel like Slack + GitHub for an AI team.
+
+### The North Star Experience
+
+When a user interacts with StarForge, it should feel identical to delegating work to human engineers:
+1. **Describe what you want** (natural language, wherever comfortable)
+2. **Walk away** (agents work autonomously)
+3. **Get notified** (Discord, email, PR notifications)
+4. **Review output** (GitHub PR, same as human team)
+5. **Provide feedback** (approve, request changes, iterate)
+
+**Decision Framework**: Every feature must answer "Does this feel like a human team?"
+
+### Key UX Metrics
+
+| Metric | Current | Phase 1 Target | Phase 2 Target |
+|--------|---------|----------------|----------------|
+| Permission prompts per feature | 50+ | <5 | 1 |
+| Active supervision time | Continuous | <30 min | <5 min |
+| Time to first value | 30 min | 5 min | 1 min |
+| Async capability | 0% | 50% | 100% |
+
+### Primary User Persona: Tech Lead
+
+**Sarah**: Engineering lead, 20-person startup, shipping 5 features this sprint
+
+**Ideal Day with StarForge**:
+- 9:00 AM: Describes feature in natural language
+- 9:01 AM: Walks away (no permission prompts, no babysitting)
+- 2:00 PM: Gets Discord notification "PR ready for review"
+- 2:30 PM: Reviews PR on GitHub, approves
+- Feature ships without Sarah writing code
+
+**Current Pain**: Permission hell, micromanaging agents, synchronous interaction required
+
+**Target**: Fire and forget, async notifications, review not supervise
+
+### Implementation Priorities
+
+**Phase 1 (0-3 months): Fix Permission Hell**
+- Permission bundling for common operations
+- Daemon mode with one-time approval
+- Wrapper scripts to eliminate Task tool prompts
+
+**Phase 2 (3-6 months): Async Notification Layer**
+- Discord integration (functional, not just documented)
+- GitHub PR notifications
+- Email digests
+- Mobile notifications (future)
+
+**Phase 3 (6-12 months): Natural Language Input**
+- Slack bot integration
+- Email-to-ticket system
+- Remove need for CLI proficiency
+
+**Phase 4 (12-24 months): Intelligent Autonomy**
+- Engineering intelligence in agents
+- Auto-approve simple PRs
+- Proactive suggestions
+- Learn from decisions
+
+### Detailed Vision Document
+
+For complete UX vision, user personas, decision frameworks, and success metrics, see:
+
+**[docs/UX-VISION.md](docs/UX-VISION.md)**
+
+This living document defines the target experience and serves as the decision-making framework for all product features.
+
+---
+
 *Document Version: 1.0*
-*Last Updated: 2025-10-18*
+*Last Updated: 2025-10-25*
 *Status: Strategic Foundation*
