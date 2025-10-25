@@ -100,6 +100,19 @@ fi
 
 cat "$BREAKDOWN_FILE"
 echo "✅ Breakdown read"
+
+# Extract architecture diagram if present
+SPIKE_DIR=$(dirname "$BREAKDOWN_FILE")
+DIAGRAM_FILE="$SPIKE_DIR/architecture.mmd"
+
+if [ -f "$DIAGRAM_FILE" ]; then
+  DIAGRAM_CONTENT=$(cat "$DIAGRAM_FILE")
+  echo "✅ Architecture diagram found: $DIAGRAM_FILE"
+  echo "📐 Diagram will be embedded in all tickets"
+else
+  DIAGRAM_CONTENT=""
+  echo "ℹ️  No architecture diagram found (OK for simple tasks)"
+fi
 ```
 
 ### Step 2: Create Tickets
@@ -262,6 +275,20 @@ echo ""
 ## 🎯 Objective
 [1 sentence: What this achieves]
 
+## 📐 Architecture
+
+\`\`\`mermaid
+[Mermaid diagram from architecture.mmd - shows component structure, dependencies, file paths]
+\`\`\`
+
+**⚠️ IMPORTANT:** Review the architecture diagram above before implementing.
+
+**Components:**
+- [Component descriptions and file paths from diagram]
+
+**Dependencies:**
+- [Key dependencies to understand]
+
 ## 📋 Implementation
 [Senior Engineer's technical approach]
 
@@ -270,6 +297,7 @@ echo ""
 - \`tests/test_file.py\` - [TDD tests first]
 
 ## ✅ Acceptance Criteria
+- [ ] **Architecture reviewed and understood**
 - [ ] **Tests written FIRST (TDD)**
 - [ ] [Specific criterion from breakdown]
 - [ ] [Another criterion]
