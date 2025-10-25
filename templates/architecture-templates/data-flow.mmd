@@ -1,0 +1,70 @@
+```mermaid
+flowchart LR
+    Input[User Input<br/>Type: JSON payload]
+    Validate{Validation<br/>Check schema}
+    Sanitize[Sanitization<br/>Clean data]
+    Transform[Transformation<br/>Apply business logic]
+    Store[(Storage<br/>Database/Cache)]
+    Output[Output<br/>Return to user]
+    Error[Error Handler<br/>Log & respond]
+
+    Input --> Validate
+    Validate -->|Valid| Sanitize
+    Validate -->|Invalid| Error
+    Sanitize --> Transform
+    Transform --> Store
+    Store --> Output
+    Error --> Output
+
+    style Input fill:#e3f2fd
+    style Validate fill:#fff9c4
+    style Transform fill:#e3f2fd
+    style Store fill:#f1f8e9
+    style Output fill:#e8f5e9
+    style Error fill:#ffebee
+```
+
+## When to Use Data Flow Diagrams
+
+Use data flow diagrams for:
+- Data transformation pipelines
+- Input → Processing → Output flows
+- ETL processes
+- Data validation flows
+- State transitions
+
+## Template Structure
+
+### Node Shapes
+- `[ ]` - Rectangle (process/transformation)
+- `{ }` - Diamond (decision/validation)
+- `[( )]` - Cylinder (storage)
+- `([ ])` - Stadium (start/end points)
+
+### Flow Direction
+- `LR` - Left to Right
+- `TB` - Top to Bottom
+- `RL` - Right to Left
+- `BT` - Bottom to Top
+
+### Edges
+- `A --> B` - Standard flow
+- `A -->|label| B` - Labeled flow
+- `A -.-> B` - Alternative/error path (dashed)
+
+### Styling
+- Input/Output: Light blue (#e3f2fd)
+- Decisions: Light yellow (#fff9c4)
+- Processing: Light blue (#e3f2fd)
+- Storage: Light green (#f1f8e9)
+- Success: Light green (#e8f5e9)
+- Errors: Light red (#ffebee)
+
+## Best Practices
+
+1. Show data types at each stage
+2. Label transformation operations clearly
+3. Show error paths with dashed lines
+4. Use decision nodes for branching logic
+5. Keep flows linear when possible (easier to read)
+6. Include storage operations explicitly
