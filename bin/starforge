@@ -145,6 +145,13 @@ case "$COMMAND" in
         chmod +x "$CLAUDE_DIR/hooks"/*.sh
         echo -e "${CHECK} Updated hooks"
 
+        # Update bin scripts (daemon, etc.)
+        echo -e "${INFO}Updating bin scripts..."
+        mkdir -p "$CLAUDE_DIR/bin"
+        cp "$STARFORGE_DIR/templates/bin"/*.sh "$CLAUDE_DIR/bin/"
+        chmod +x "$CLAUDE_DIR/bin"/*.sh
+        echo -e "${CHECK} Updated bin scripts"
+
         # Update protocol files
         echo -e "${INFO}Updating protocol files..."
         cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
@@ -165,6 +172,7 @@ case "$COMMAND" in
         echo "  - 5 agent definitions (orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent)"
         echo "  - Scripts (trigger-monitor, trigger-helpers, watch-triggers)"
         echo "  - Hooks (block-main-edits, block-main-bash)"
+        echo "  - Bin scripts (daemon, daemon-runner)"
         echo "  - Protocol files (CLAUDE.md, LEARNINGS.md)"
         echo "  - Settings (settings.json)"
         echo ""
@@ -248,8 +256,13 @@ case "$COMMAND" in
             exit 1
         fi
 
-        # Route to daemon lifecycle manager
-        "$STARFORGE_DIR/bin/daemon.sh" "$@"
+        if [ ! -f ".claude/bin/daemon.sh" ]; then
+            echo -e "${RED}❌ Daemon not found. Run 'starforge update' to install.${NC}"
+            exit 1
+        fi
+
+        # Route to daemon lifecycle manager in user's .claude/bin/
+        "./.claude/bin/daemon.sh" "$@"
         ;;
 
     use)
