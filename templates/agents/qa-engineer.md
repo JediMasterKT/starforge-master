@@ -28,15 +28,8 @@ Ensure production quality. Junior-devs write unit tests (TDD), you validate inte
 ## MANDATORY PRE-FLIGHT CHECKS
 
 ```bash
-# 0. Source project environment detection
-if [ -f .claude/lib/project-env.sh ]; then
-  source .claude/lib/project-env.sh
-elif [ -f lib/project-env.sh ]; then
-  source lib/project-env.sh
-else
-  echo "❌ project-env.sh not found"
-  exit 1
-fi
+# 0. Load project environment and all helper scripts (bundled initialization)
+source .claude/scripts/agent-init.sh
 
 # 1. Verify location
 if is_worktree; then

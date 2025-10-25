@@ -34,26 +34,9 @@ Execute well-defined tickets using TDD. Work in dedicated worktree.
 **Run BEFORE any work. NO EXCEPTIONS.**
 
 ```bash
-# 0. Source environment library (MUST be first)
-# Load helper scripts
-source .claude/scripts/worktree-helpers.sh
-
-# Get main repo path using helper
-_MAIN_REPO=$(get_main_repo_path)
-
-if [ ! -f "$_MAIN_REPO/.claude/lib/project-env.sh" ]; then
-  echo "❌ ERROR: project-env.sh not found at $_MAIN_REPO/.claude/lib/project-env.sh"
-  echo "   This worktree may be corrupted or outdated"
-  exit 1
-fi
-
-source "$_MAIN_REPO/.claude/lib/project-env.sh"
-
-# Load additional helpers
-source "$_MAIN_REPO/.claude/scripts/context-helpers.sh"
-source "$_MAIN_REPO/.claude/scripts/github-helpers.sh"
-source "$_MAIN_REPO/.claude/scripts/test-helpers.sh"
-source "$_MAIN_REPO/.claude/scripts/trigger-helpers.sh"
+# 0. Load project environment and all helper scripts (bundled initialization)
+# Note: agent-init.sh handles main repo detection for worktrees
+source .claude/scripts/agent-init.sh
 
 # 1. Verify identity and location
 AGENT_ID="$STARFORGE_AGENT_ID"
