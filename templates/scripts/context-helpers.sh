@@ -76,3 +76,91 @@ check_context_files() {
 
     return $missing
 }
+
+# Count learning entries in learnings file
+# Replaces: grep -c "^##.*Learning" "$LEARNINGS" || echo "0"
+count_learnings() {
+    local learnings_file=$1
+
+    if [ -z "$learnings_file" ]; then
+        echo "❌ Learnings file path required"
+        return 1
+    fi
+
+    if [ ! -f "$learnings_file" ]; then
+        echo "0"
+        return 0  # Not an error, just no learnings yet
+    fi
+
+    local count=$(grep -c "^##.*Learning" "$learnings_file" 2>/dev/null || echo "0")
+
+    echo "$count"
+}
+
+# ============================================================================
+# BREAKDOWN ANALYSIS HELPERS (for senior-engineer)
+# ============================================================================
+
+# Get the most recent spike directory
+# Replaces: ls -td "$STARFORGE_CLAUDE_DIR/spikes/spike-"* | head -1
+get_latest_spike_dir() {
+    if [ ! -d "$STARFORGE_CLAUDE_DIR/spikes" ]; then
+        return 1
+    fi
+
+    # Use ls -td to sort by time (newest first), filter for spike- pattern
+    local spike_dir=$(ls -td "$STARFORGE_CLAUDE_DIR/spikes/spike-"* 2>/dev/null | head -1)
+
+    if [ -n "$spike_dir" ]; then
+        echo "$spike_dir"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Extract feature name from breakdown file
+# Replaces: grep "^# Task Breakdown:" "$BREAKDOWN_PATH" | sed 's/# Task Breakdown: //'
+get_feature_name_from_breakdown() {
+    local breakdown_file=$1
+
+    if [ ! -f "$breakdown_file" ]; then
+        return 1
+    fi
+
+    # Extract feature name from "# Task Breakdown: Feature Name" line
+    local feature_name=$(grep "^# Task Breakdown:" "$breakdown_file" | sed 's/# Task Breakdown: //')
+
+    if [ -n "$feature_name" ]; then
+        echo "$feature_name"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Count subtasks in breakdown file
+# Replaces: grep -c "^### Subtask" "$BREAKDOWN_PATH"
+get_subtask_count_from_breakdown() {
+    local breakdown_file=$1
+
+    if [ ! -f "$breakdown_file" ]; then
+        echo "0"
+        return 1
+    fi
+
+    # Count lines starting with "### Subtask"
+    # Use grep -c which returns count, or 0 if no matches
+    local count
+    count=$(grep -c "^### Subtask" "$breakdown_file" 2>/dev/null)
+
+    # grep -c returns 0 if no matches, non-zero exit code if no file
+    # We already checked file exists, so we can safely use the count
+    if [ $? -eq 0 ]; then
+        echo "$count"
+        return 0
+    else
+        echo "0"
+        return 0
+    fi
+}

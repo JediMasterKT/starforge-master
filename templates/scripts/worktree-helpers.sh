@@ -111,3 +111,58 @@ verify_main_repo() {
     echo "✅ Running from main repository"
     return 0
 }
+
+# ============================================================================
+# GIT COMMIT HELPERS (Added for ticket #148)
+# ============================================================================
+
+# Extract ticket number from branch name
+# Replaces: git branch --show-current | sed -n 's/.*ticket-\([0-9]*\).*/\1/p'
+extract_ticket_from_branch() {
+    local branch_name=${1:-$(git branch --show-current 2>/dev/null)}
+
+    if [ -z "$branch_name" ]; then
+        echo "❌ No branch name provided or not in a git repo"
+        return 1
+    fi
+
+    # Extract number after "ticket-"
+    local ticket=$(echo "$branch_name" | sed -n 's/.*ticket-\([0-9]*\).*/\1/p')
+
+    if [ -z "$ticket" ]; then
+        return 1  # No ticket number found
+    fi
+
+    echo "$ticket"
+}
+
+# Get bullet points from commit messages
+# Replaces: git log origin/main..HEAD --format="%b" --reverse | grep -E '^\s*-' | sort -u
+get_commit_bullets() {
+    local base_ref=${1:-"origin/main"}
+
+    local bullets=$(git log "${base_ref}..HEAD" --format="%b" --reverse 2>/dev/null | grep -E '^\s*-' | sort -u)
+
+    if [ -z "$bullets" ]; then
+        # No bullet points found, return placeholder
+        echo "- Implementation completed"
+        return 0
+    fi
+
+    echo "$bullets"
+}
+
+# Count commits since a reference
+# Replaces: git rev-list --count origin/main..HEAD
+count_commits_since() {
+    local base_ref=${1:-"origin/main"}
+
+    local count=$(git rev-list --count "${base_ref}..HEAD" 2>/dev/null)
+
+    if [ $? -ne 0 ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$count"
+}

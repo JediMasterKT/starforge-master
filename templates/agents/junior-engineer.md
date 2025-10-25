@@ -35,11 +35,11 @@ Execute well-defined tickets using TDD. Work in dedicated worktree.
 
 ```bash
 # 0. Source environment library (MUST be first)
-# Detect main repo from worktree to source project-env.sh
-_MAIN_REPO=$(git worktree list --porcelain 2>/dev/null | grep "^worktree" | head -1 | cut -d' ' -f2)
-if [ -z "$_MAIN_REPO" ]; then
-  _MAIN_REPO=$(git rev-parse --show-toplevel 2>/dev/null)
-fi
+# Load helper scripts
+source .claude/scripts/worktree-helpers.sh
+
+# Get main repo path using helper
+_MAIN_REPO=$(get_main_repo_path)
 
 if [ ! -f "$_MAIN_REPO/.claude/lib/project-env.sh" ]; then
   echo "❌ ERROR: project-env.sh not found at $_MAIN_REPO/.claude/lib/project-env.sh"
@@ -48,6 +48,12 @@ if [ ! -f "$_MAIN_REPO/.claude/lib/project-env.sh" ]; then
 fi
 
 source "$_MAIN_REPO/.claude/lib/project-env.sh"
+
+# Load additional helpers
+source "$_MAIN_REPO/.claude/scripts/context-helpers.sh"
+source "$_MAIN_REPO/.claude/scripts/github-helpers.sh"
+source "$_MAIN_REPO/.claude/scripts/test-helpers.sh"
+source "$_MAIN_REPO/.claude/scripts/trigger-helpers.sh"
 
 # 1. Verify identity and location
 AGENT_ID="$STARFORGE_AGENT_ID"
@@ -58,23 +64,18 @@ fi
 echo "✅ Identity: $AGENT_ID in $PWD"
 
 # 2. Read project context (MANDATORY)
-if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
-  echo "❌ PROJECT_CONTEXT.md missing - CANNOT PROCEED"
+if ! check_context_files; then
+  echo "❌ Context files missing - CANNOT PROCEED"
   exit 1
 fi
 
 echo "📋 Reading project context..."
-cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -20
-echo "✅ Context: $(grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1)"
+get_project_context
+echo "✅ Context: $(get_building_summary)"
 
 # 3. Read tech stack (MANDATORY)
-if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
-  echo "❌ TECH_STACK.md missing - CANNOT PROCEED"
-  exit 1
-fi
-
-cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -20
-echo "✅ Tech Stack: $(grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1)"
+get_tech_stack
+echo "✅ Tech Stack: $(get_primary_tech)"
 
 # 4. Check assignment
 STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT_ID}-status.json"
@@ -115,7 +116,7 @@ echo "✅ Fetched origin/main ($(git rev-parse --short origin/main))"
 LEARNINGS="$STARFORGE_CLAUDE_DIR/agents/agent-learnings/junior-engineer/learnings.md"
 if [ -f "$LEARNINGS" ]; then
   cat "$LEARNINGS"
-  LEARNING_COUNT=$(grep -c "^##.*Learning" "$LEARNINGS" || echo "0")
+  LEARNING_COUNT=$(count_learnings "$LEARNINGS")
   echo "✅ Learnings reviewed ($LEARNING_COUNT learnings applied)"
 else
   echo "ℹ️  No learnings yet (OK for first run)"
@@ -266,7 +267,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Verify we're on the new branch based on fresh main
-CURRENT_BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$(get_current_branch)
 BASE_COMMIT=$(git merge-base HEAD origin/main)
 ORIGIN_MAIN_COMMIT=$(git rev-parse origin/main)
 
@@ -392,14 +393,14 @@ Closes #${TICKET}"
 echo "🔄 Squashing commits into 1..."
 
 # Count commits since origin/main
-COMMIT_COUNT=$(git rev-list --count origin/main..HEAD)
+COMMIT_COUNT=$(count_commits_since origin/main)
 echo "Found $COMMIT_COUNT commits to squash"
 
 # Extract all bullet points from all commits
-ALL_BULLETS=$(git log origin/main..HEAD --format="%b" --reverse | grep -E '^\s*-' | sort -u)
+ALL_BULLETS=$(get_commit_bullets origin/main)
 
-# Get ticket number from branch name (macOS-compatible)
-TICKET=$(git branch --show-current | sed -n 's/.*ticket-\([0-9]*\).*/\1/p')
+# Get ticket number from branch name
+TICKET=$(extract_ticket_from_branch)
 
 # Squash all commits into one with combined details
 git reset --soft origin/main
@@ -424,9 +425,9 @@ PR_BODY="## Changes
 - Implemented feature per ticket requirements
 
 ## Testing
-- ✅ Unit tests: $(pytest tests/test_feature.py --co -q | wc -l | tr -d ' ') tests passing
+- ✅ Unit tests: $(count_test_cases tests/test_feature.py) tests passing
 - ✅ TDD: Tests written first
-- ✅ Coverage: $(pytest --cov=src/feature --cov-report=term-missing | grep TOTAL | awk '{print $4}')
+- ✅ Coverage: $(get_coverage_percentage coverage.txt 2>/dev/null || echo "N/A")
 
 ## Closes
 #${TICKET}"
@@ -438,6 +439,8 @@ gh pr create \
 # Get PR number
 PR_NUMBER=$(gh pr view --json number -q .number)
 
+# Note: Could use get_pr_details() helper, but simple gh command is clearer here
+
 # Add needs-review label
 gh pr edit $PR_NUMBER --add-label "needs-review"
 echo "✅ Added 'needs-review' label to PR #$PR_NUMBER"
@@ -448,14 +451,13 @@ jq --arg pr "$PR_NUMBER" \
    "$STATUS_FILE" > /tmp/status.json && mv /tmp/status.json "$STATUS_FILE"
 
 # IMMEDIATELY trigger QA (same workflow step - cannot be skipped)
-source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 trigger_qa_review "$AGENT_ID" $PR_NUMBER $TICKET
 
 # VERIFY TRIGGER (MANDATORY - BLOCKS COMPLETION)
 sleep 1  # Allow filesystem sync
-TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/qa-engineer-review_pr-*.trigger" 2>/dev/null | head -1)
+TRIGGER_FILE=$(get_latest_trigger_file "qa-engineer" "review_pr")
 
-if [ ! -f "$TRIGGER_FILE" ]; then
+if ! verify_trigger_exists "$TRIGGER_FILE"; then
   echo ""
   echo "❌❌❌ CRITICAL FAILURE ❌❌❌"
   echo "❌ PR created but QA trigger MISSING"
@@ -465,22 +467,24 @@ if [ ! -f "$TRIGGER_FILE" ]; then
   exit 1
 fi
 
-# Validate JSON
-jq empty "$TRIGGER_FILE" 2>/dev/null
-if [ $? -ne 0 ]; then
+# Validate JSON and fields
+if ! verify_trigger_json "$TRIGGER_FILE"; then
   echo "❌ TRIGGER INVALID JSON"
   cat "$TRIGGER_FILE"
   exit 1
 fi
 
-# Verify trigger fields (data integrity)
-TO_AGENT=$(jq -r '.to_agent' "$TRIGGER_FILE")
-PR_IN_TRIGGER=$(jq -r '.context.pr' "$TRIGGER_FILE")
-
-if [ "$TO_AGENT" != "qa-engineer" ] || [ "$PR_IN_TRIGGER" != "$PR_NUMBER" ]; then
+if ! verify_trigger_fields "$TRIGGER_FILE" "qa-engineer" "review_pr"; then
   echo "❌ TRIGGER VERIFICATION FAILED"
-  echo "   Expected: qa-engineer, PR #$PR_NUMBER"
-  echo "   Got: $TO_AGENT, PR #$PR_IN_TRIGGER"
+  exit 1
+fi
+
+# Verify PR number in context
+PR_IN_TRIGGER=$(get_trigger_field "$TRIGGER_FILE" "context.pr")
+if [ "$PR_IN_TRIGGER" != "$PR_NUMBER" ]; then
+  echo "❌ TRIGGER PR MISMATCH"
+  echo "   Expected: PR #$PR_NUMBER"
+  echo "   Got: PR #$PR_IN_TRIGGER"
   exit 1
 fi
 

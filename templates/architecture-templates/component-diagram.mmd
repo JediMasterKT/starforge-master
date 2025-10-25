@@ -1,0 +1,46 @@
+```mermaid
+graph TD
+    A[Component A<br/>Responsibility: Handles X<br/>File: src/component_a.py<br/>Tests: tests/test_component_a.py]
+    B[Component B<br/>Responsibility: Handles Y<br/>File: src/component_b.py<br/>Tests: tests/test_component_b.py]
+    DB[(Database<br/>Schema Changes:<br/>- Add table: feature_data<br/>- Add index: idx_feature_id)]
+    EXT[External API<br/>Service: example.com/api]
+
+    A -->|depends on| B
+    A -->|writes to| DB
+    B -->|calls| EXT
+
+    style A fill:#e3f2fd
+    style B fill:#e3f2fd
+    style DB fill:#f1f8e9
+    style EXT fill:#fff9c4
+```
+
+## When to Use Component Diagrams
+
+Use component diagrams for:
+- Features with 2+ components
+- Service dependencies
+- Database interactions
+- External API integrations
+
+## Template Structure
+
+### Node Format
+```
+NodeID[Display Name<br/>Responsibility: What it does<br/>File: path/to/file.py<br/>Tests: path/to/test.py]
+```
+
+### Relationships
+- `A --> B` - A depends on B
+- `A -->|label| B` - Labeled dependency
+- `A -.->|forbidden| B` - Forbidden dependency (dashed line)
+
+### Node Types
+- `[ ]` - Rectangle (components)
+- `[( )]` - Cylinder (databases)
+- `[ ]` with no shape - External services
+
+### Styling
+- Components: Light blue (#e3f2fd)
+- Databases: Light green (#f1f8e9)
+- External: Light yellow (#fff9c4)

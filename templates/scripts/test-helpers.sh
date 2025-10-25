@@ -126,3 +126,30 @@ verify_tests_passing() {
 
     return $?
 }
+
+# Count test cases in a test file or directory
+# Replaces: pytest tests/test_feature.py --co -q | wc -l | tr -d ' '
+count_test_cases() {
+    local test_path=$1
+
+    if [ -z "$test_path" ]; then
+        echo "❌ Test path required"
+        return 1
+    fi
+
+    # Get test command from TECH_STACK.md if available
+    local test_cmd="pytest"
+    if [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
+        test_cmd=$(grep 'Command:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1 | cut -d'`' -f2)
+    fi
+
+    # Count tests using --collect-only
+    local count=$($test_cmd "$test_path" --co -q 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ -z "$count" ]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$count"
+}

@@ -15,33 +15,26 @@ Manage 3 junior-devs working in parallel. Maximize throughput, ensure quality.
 # 0. Load project environment
 source .claude/lib/project-env.sh
 
+# Load helper scripts
+source .claude/scripts/context-helpers.sh
+source .claude/scripts/github-helpers.sh
+source .claude/scripts/worktree-helpers.sh
+
 # 1. Verify location (main repo)
-if is_worktree; then
-  echo "❌ Must run from main repo, not worktree"
-  exit 1
-fi
-echo "✅ Location: Main repository"
+verify_main_repo || exit 1
 echo "✅ Project: $STARFORGE_PROJECT_NAME"
 
 # 2. Read project context
-if [ ! -f .claude/PROJECT_CONTEXT.md ]; then
-  echo "❌ PROJECT_CONTEXT.md missing"
-  exit 1
-fi
-cat .claude/PROJECT_CONTEXT.md | head -15
-echo "✅ Context: $(grep '##.*Building' .claude/PROJECT_CONTEXT.md | head -1)"
+check_context_files || exit 1
+get_project_context
+echo "✅ Context: $(get_building_summary)"
 
 # 3. Read tech stack
-if [ ! -f .claude/TECH_STACK.md ]; then
-  echo "❌ TECH_STACK.md missing"
-  exit 1
-fi
-cat .claude/TECH_STACK.md | head -15
-echo "✅ Tech Stack: $(grep 'Primary:' .claude/TECH_STACK.md | head -1)"
+get_tech_stack
+echo "✅ Tech Stack: $(get_primary_tech)"
 
 # 4. Check GitHub connection
-gh auth status > /dev/null 2>&1
-if [ $? -ne 0 ]; then
+if ! check_gh_auth; then
   echo "❌ GitHub CLI not authenticated"
   exit 1
 fi
@@ -248,65 +241,45 @@ gh pr view $PR_NUMBER --json reviews
 ### Merge Approved PRs
 
 ```bash
+# Load helper scripts
+source .claude/scripts/github-helpers.sh
+
 # Auto-merge PRs with qa-approved label
 echo "🔍 Checking for qa-approved PRs..."
 
-gh pr list --label "qa-approved" --json number,title --jq '.[] | "\(.number)|\(.title)"' | while IFS='|' read -r PR_NUMBER TITLE; do
+get_qa_approved_prs | while IFS='|' read -r PR_NUMBER TITLE; do
   echo "Found approved PR #$PR_NUMBER: $TITLE"
 
-  # Get associated ticket number from PR body (macOS-compatible)
-  TICKET=$(gh pr view $PR_NUMBER --json body --jq -r '.body' | sed -n 's/.*#\([0-9][0-9]*\).*/\1/p' | head -1)
+  # Get associated ticket number from PR body
+  TICKET=$(get_ticket_from_pr $PR_NUMBER)
 
   if [ -z "$TICKET" ]; then
     echo "⚠️  Cannot find ticket number for PR #$PR_NUMBER - skipping"
     continue
   fi
 
-  # Check if high-risk (requires human approval)
-  CHANGES=$(gh pr view $PR_NUMBER --json additions,deletions --jq '.additions + .deletions')
-  PRIORITY=$(gh issue view $TICKET --json labels --jq -r '.labels[] | select(.name | startswith("P")) | .name' 2>/dev/null || echo "")
+  # ALL PRs require human approval to merge
+  CHANGES=$(get_pr_line_changes $PR_NUMBER)
+  PRIORITY=$(get_issue_priority $TICKET 2>/dev/null || echo "P1")
 
-  if [ "$PRIORITY" = "P0" ] || [ "$CHANGES" -gt 200 ]; then
-    echo "⚠️  High-risk PR #$PR_NUMBER ($PRIORITY, $CHANGES lines changed)"
-    echo "   Requires human approval - leaving for human to merge"
-    gh pr comment $PR_NUMBER --body "⚠️ @human This PR requires your approval before merge:\n- Priority: ${PRIORITY:-P1}\n- Lines changed: $CHANGES\n- Auto-merge blocked (P0 or >200 lines)"
-  else
-    # Auto-merge (safe PR)
-    echo "✅ Auto-merging PR #$PR_NUMBER (safe: $CHANGES lines, ${PRIORITY:-P1})"
+  echo "✅ PR #$PR_NUMBER ready for human review"
+  echo "   Priority: $PRIORITY, Changes: $CHANGES lines"
 
-    gh pr merge $PR_NUMBER --squash --delete-branch
+  # Notify human that PR is qa-approved and ready for merge
+  gh pr comment $PR_NUMBER --body "✅ **QA Approved - Ready for Human Review**
 
-    if [ $? -eq 0 ]; then
-      echo "✅ PR #$PR_NUMBER merged and branch deleted"
+**Issue:** #$TICKET
+**Priority:** $PRIORITY
+**Changes:** $CHANGES lines
+**Status:** All tests passed, QA approved
 
-      # Update issue: remove in-progress, add completed
-      gh issue edit $TICKET --remove-label "in-progress" --add-label "completed"
-      echo "✅ Updated issue #$TICKET labels: in-progress → completed"
+@human Please review and merge when ready. The orchestrator has verified this PR is ready but requires your approval to merge."
 
-      # Close ticket
-      gh issue close $TICKET --reason "completed"
-
-      # Notify completion
-      gh issue comment $TICKET --body "✅ Completed and merged via PR #$PR_NUMBER\n\nAuto-merged by orchestrator (qa-approved, $CHANGES lines changed)"
-
-      # Update agent status to idle (macOS-compatible)
-      AGENT=$(gh pr view $PR_NUMBER --json author --jq -r '.author.login' | grep -o 'junior-dev-[abc]')
-
-      if [ -n "$AGENT" ]; then
-        STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
-        jq --arg ticket "$TICKET" \
-           '.status = "idle" | .ticket = null | .last_completed = ($ticket | tonumber) | .completed_at = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
-           "$STATUS_FILE" > /tmp/status.json && mv /tmp/status.json "$STATUS_FILE"
-        echo "✅ Agent $AGENT status updated to idle"
-      fi
-    else
-      echo "❌ Failed to merge PR #$PR_NUMBER"
-    fi
-  fi
+  echo "✅ Human notified for PR #$PR_NUMBER (awaiting manual merge)"
 done
 
 # Summary
-APPROVED_COUNT=$(gh pr list --label "qa-approved" --json number | jq length)
+APPROVED_COUNT=$(get_qa_approved_pr_count)
 if [ "$APPROVED_COUNT" -eq 0 ]; then
   echo "✅ No qa-approved PRs to merge"
 fi
@@ -315,21 +288,24 @@ fi
 ### Handle Declined PRs
 
 ```bash
+# Load helper scripts
+source .claude/scripts/github-helpers.sh
+
 # Re-trigger work for PRs with qa-declined label
 echo "🔍 Checking for qa-declined PRs..."
 
-gh pr list --label "qa-declined" --json number,title,author --jq '.[] | "\(.number)|\(.title)|\(.author.login)"' | while IFS='|' read -r PR_NUMBER TITLE AUTHOR; do
+get_qa_declined_prs | while IFS='|' read -r PR_NUMBER TITLE AUTHOR; do
   echo "Found declined PR #$PR_NUMBER: $TITLE (author: $AUTHOR)"
 
-  # Get associated ticket number from PR body (macOS-compatible)
-  TICKET=$(gh pr view $PR_NUMBER --json body --jq -r '.body' | sed -n 's/.*#\([0-9][0-9]*\).*/\1/p' | head -1)
+  # Get associated ticket number from PR body
+  TICKET=$(get_ticket_from_pr $PR_NUMBER)
 
   if [ -z "$TICKET" ]; then
     echo "⚠️  Cannot find ticket number for PR #$PR_NUMBER - skipping"
     continue
   fi
 
-  # Extract agent ID from author (e.g., "junior-dev-a" from author field) (macOS-compatible)
+  # Extract agent ID from author
   AGENT=$(echo "$AUTHOR" | grep -o 'junior-dev-[abc]')
 
   if [ -z "$AGENT" ]; then
@@ -392,10 +368,8 @@ EOF
 done
 
 # Summary
-DECLINED_COUNT=$(gh pr list --label "qa-declined" --json number | jq length)
-if [ "$DECLINED_COUNT" -eq 0 ]; then
-  echo "✅ No qa-declined PRs to handle"
-fi
+# Note: This count will be 0 after the loop above since we remove the qa-declined label
+echo "✅ Processed all qa-declined PRs"
 ```
 
 ## Blocker Handling
@@ -434,6 +408,9 @@ done
 ## Status Report
 
 ```bash
+# Load helper scripts
+source .claude/scripts/github-helpers.sh
+
 # Generate status (every 4 hours or on demand)
 
 cat << REPORT
@@ -463,15 +440,15 @@ $(for AGENT in junior-dev-a junior-dev-b junior-dev-c; do
 done)
 
 ## Queue Status
-- Ready tickets: $(gh issue list --label "ready" --json number | jq length)
-- In progress: $(gh issue list --label "in-progress" --json number | jq length)
-- Needs review: $(gh pr list --label "needs-review" --json number | jq length)
+- Ready tickets: $(get_ready_ticket_count)
+- In progress: $(get_in_progress_ticket_count)
+- Needs review: $(get_pending_pr_count)
 
 ## Blockers
-$(gh issue list --label "blocked" --json number,title --jq '.[] | "- #\(.number): \(.title)"')
+$(get_issues_by_label "blocked" | jq -r '.[] | "- #\(.number): \(.title)"')
 
 ## Velocity
-- Completed today: $(gh issue list --state closed --search "closed:$(date '+%Y-%m-%d')" --json number | jq length)
+- Completed today: $(get_closed_today_count)
 - Avg time/ticket: [Manual calculation]
 REPORT
 ```
@@ -490,7 +467,10 @@ gh issue comment $TICKET --body "Merge conflict detected. Rebase against main: g
 
 **To TPM:**
 ```bash
-READY_COUNT=$(gh issue list --label "ready" --json number | jq length)
+# Load helper scripts
+source .claude/scripts/github-helpers.sh
+
+READY_COUNT=$(get_ready_ticket_count)
 if [ $READY_COUNT -lt 5 ]; then
   gh issue comment [TPM-TRACKER-ISSUE] --body "Queue low: Only $READY_COUNT ready tickets. Need 5+ to maintain velocity."
 fi
