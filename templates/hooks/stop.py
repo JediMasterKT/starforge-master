@@ -24,7 +24,8 @@ Behavior:
 4. Logs handoff to .claude/agent-handoff.log
 5. Archives trigger to .claude/triggers/processed/
 6. Sends macOS notification
-7. Prints handoff info to terminal
+7. Sends Discord notification (optional)
+8. Prints handoff info to terminal
 
 Exit codes:
 0 - Success (even if no triggers found)
@@ -36,6 +37,78 @@ import os
 import subprocess
 from pathlib import Path
 from datetime import datetime
+import urllib.request
+import urllib.error
+
+
+def send_discord_notification(from_agent, to_agent, message, command):
+    """
+    Send rich notification to Discord (optional).
+
+    Requires DISCORD_WEBHOOK_URL environment variable.
+    Fails gracefully if not configured or if request fails.
+
+    Args:
+        from_agent: Source agent name
+        to_agent: Target agent name
+        message: Handoff message
+        command: Command to run next agent
+    """
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        return  # Discord not configured, skip silently
+
+    try:
+        # Create rich embed for Discord
+        embed = {
+            "embeds": [{
+                "title": f"🤖 Agent Handoff: {to_agent}",
+                "description": message,
+                "color": 3447003,  # Blue color
+                "fields": [
+                    {
+                        "name": "From Agent",
+                        "value": from_agent,
+                        "inline": True
+                    },
+                    {
+                        "name": "To Agent",
+                        "value": to_agent,
+                        "inline": True
+                    },
+                    {
+                        "name": "Next Action",
+                        "value": f"```bash\n{command}\n```",
+                        "inline": False
+                    }
+                ],
+                "timestamp": datetime.utcnow().isoformat(),
+                "footer": {
+                    "text": "StarForge Agent System"
+                }
+            }]
+        }
+
+        # Send POST request to Discord webhook
+        data = json.dumps(embed).encode('utf-8')
+        req = urllib.request.Request(
+            webhook_url,
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'User-Agent': 'StarForge-Agent-System/1.0'
+            },
+            method='POST'
+        )
+
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 204:
+                # Discord webhooks return 204 No Content on success
+                pass
+
+    except (urllib.error.URLError, urllib.error.HTTPError, Exception):
+        # Fail gracefully - don't break the hook if Discord is down
+        pass
 
 
 def get_next_trigger():
@@ -98,6 +171,9 @@ def process_trigger(trigger_file):
     except Exception:
         # Fail gracefully if notification fails
         pass
+
+    # Send Discord notification (optional)
+    send_discord_notification(from_agent, next_agent, message, command)
 
     return {
         "agent": next_agent,

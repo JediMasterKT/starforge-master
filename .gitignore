@@ -16,4 +16,7 @@
 # Logs
 *.log
 .claude/
+
+# Environment files (but keep template)
 .env
+!.env.example
