@@ -1,0 +1,70 @@
+```mermaid
+sequenceDiagram
+    participant User
+    participant ComponentA as Component A<br/>(src/component_a.py)
+    participant ComponentB as Component B<br/>(src/component_b.py)
+    participant DB as Database
+    participant API as External API
+
+    User->>ComponentA: Request (input data)
+    activate ComponentA
+
+    ComponentA->>ComponentB: Process data
+    activate ComponentB
+
+    ComponentB->>API: Fetch external data
+    API-->>ComponentB: Return data
+
+    ComponentB->>DB: Query existing records
+    DB-->>ComponentB: Return records
+
+    ComponentB-->>ComponentA: Processed result
+    deactivate ComponentB
+
+    ComponentA->>DB: Save result
+    ComponentA-->>User: Response
+    deactivate ComponentA
+```
+
+## When to Use Sequence Diagrams
+
+Use sequence diagrams for:
+- Request/response flows
+- Multi-step processes
+- Agent handoffs
+- API call sequences
+- Time-ordered interactions
+
+## Template Structure
+
+### Participants
+```
+participant Alias as Display Name<br/>(file path)
+```
+
+### Messages
+- `A->>B: Message` - Synchronous call
+- `A-->>B: Message` - Response/return
+- `A->>+B: Message` - Activate B
+- `A-->>-B: Message` - Deactivate B
+
+### Activation
+```
+activate ComponentA
+... operations ...
+deactivate ComponentA
+```
+
+### Notes
+```
+Note over ComponentA,ComponentB: Important note
+Note right of ComponentA: Side note
+```
+
+## Best Practices
+
+1. Show file paths in participant labels
+2. Use activation boxes for long-running operations
+3. Label messages clearly (what data is passed)
+4. Show errors/exceptions with dotted red lines
+5. Keep sequences focused (max 8-10 steps)
