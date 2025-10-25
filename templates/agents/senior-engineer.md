@@ -87,8 +87,123 @@ EOF
 ## Core Process
 
 ```
-User request → Clarify → Research → Design → Break down → Handoff to TPM
+User request → Clarify → Research → Design → Create Diagram → Break down → Handoff to TPM
 ```
+
+## Architecture Diagram (MANDATORY)
+
+**Every breakdown MUST include a Mermaid diagram.**
+
+### Location
+Save to: `$STARFORGE_CLAUDE_DIR/spikes/{spike-id}/architecture.mmd`
+
+### When to Use Which Diagram
+
+**Component Diagram** - Use for:
+- Multi-component features (2+ components)
+- Service dependencies
+- Database interactions
+- External API integrations
+
+**Sequence Diagram** - Use for:
+- Request/response flows
+- Multi-step processes
+- Agent handoffs
+- API call sequences
+
+**Data Flow Diagram** - Use for:
+- Data transformation pipelines
+- Input → Processing → Output flows
+- ETL processes
+- Validation workflows
+
+### Template Location
+See: `$STARFORGE_MAIN_REPO/templates/architecture-templates/` for examples:
+- `component-diagram.mmd` - Component dependencies
+- `sequence-diagram.mmd` - Interaction flows
+- `data-flow.mmd` - Data pipelines
+- `README.md` - Full usage guide
+
+### Creating the Diagram
+
+**1. Choose template based on feature type:**
+```bash
+cd "$STARFORGE_CLAUDE_DIR/spikes/$SPIKE_ID"
+
+# For multi-component features
+cp "$STARFORGE_MAIN_REPO/templates/architecture-templates/component-diagram.mmd" architecture.mmd
+
+# For request/response flows
+cp "$STARFORGE_MAIN_REPO/templates/architecture-templates/sequence-diagram.mmd" architecture.mmd
+
+# For data pipelines
+cp "$STARFORGE_MAIN_REPO/templates/architecture-templates/data-flow.mmd" architecture.mmd
+```
+
+**2. Customize the diagram:**
+- Replace placeholder component names
+- Update file paths (src/your_component.py)
+- Adjust relationships and dependencies
+- Add database/external service nodes
+- Update styling if needed
+
+**3. Include in breakdown.md:**
+````markdown
+## Architecture
+
+```mermaid
+graph TD
+    A[Component A<br/>File: src/component_a.py<br/>Tests: tests/test_component_a.py]
+    B[Component B<br/>File: src/component_b.py]
+    DB[(Database<br/>Schema: Add priority_score)]
+
+    A -->|depends on| B
+    A -->|writes to| DB
+
+    style A fill:#e3f2fd
+    style B fill:#e3f2fd
+    style DB fill:#f1f8e9
+```
+
+**Components:**
+- **Component A**: Handles X functionality (src/component_a.py)
+- **Component B**: Handles Y functionality (src/component_b.py)
+- **Database**: Schema changes listed in Subtask 1
+
+**Dependencies:**
+- Component A depends on Component B
+- Component A writes to Database
+- Component B must NOT access Database directly (forbidden)
+````
+
+### Diagram Requirements
+
+**MUST include:**
+- [ ] All components with descriptive names
+- [ ] File paths for each component (src/file.py)
+- [ ] Test file paths (tests/test_file.py)
+- [ ] Database/external service nodes
+- [ ] Clear dependency arrows
+- [ ] Forbidden dependencies (dashed lines with "forbidden")
+- [ ] Consistent styling (use template colors)
+
+**Example - Simple Feature (2 components):**
+```mermaid
+graph TD
+    Scorer[Priority Scorer<br/>File: src/priority_scorer.py]
+    Analyzer[Pattern Analyzer<br/>File: src/pattern_analyzer.py]
+    DB[(Database<br/>Add: ai_priority_score)]
+
+    Scorer -->|uses| Analyzer
+    Scorer -->|writes| DB
+
+    style Scorer fill:#e3f2fd
+    style Analyzer fill:#e3f2fd
+    style DB fill:#f1f8e9
+```
+
+**Example - Complex Feature (5+ components):**
+Create both component AND sequence diagrams to show structure and flow.
 
 ## Research Tools
 
@@ -719,6 +834,11 @@ fi
 
 **Before triggering TPM, MUST verify:**
 
+- [ ] **Mermaid diagram created** in spike folder (architecture.mmd)
+- [ ] **Diagram included** in breakdown.md with mermaid code block
+- [ ] **All components shown** with file paths and test locations
+- [ ] **Dependencies clearly marked** with labeled arrows
+- [ ] **Forbidden patterns indicated** (dashed lines if applicable)
 - [ ] All subtasks ≤L effort (break down if XL)
 - [ ] TDD test cases specified for each
 - [ ] Acceptance criteria are testable
