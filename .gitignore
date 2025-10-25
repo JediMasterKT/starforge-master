@@ -17,6 +17,12 @@
 *.log
 .claude/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
 # Environment files (but keep template)
 .env
 !.env.example

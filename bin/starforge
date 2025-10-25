@@ -139,9 +139,9 @@ case "$COMMAND" in
         chmod +x "$CLAUDE_DIR/scripts"/*.sh
         echo -e "${CHECK} Updated scripts"
 
-        # Update hooks (copy all files, not just .sh)
+        # Update hooks (copy all files, skip directories like __pycache__)
         echo -e "${INFO}Updating hooks..."
-        cp "$STARFORGE_DIR/templates/hooks"/* "$CLAUDE_DIR/hooks/"
+        find "$STARFORGE_DIR/templates/hooks" -maxdepth 1 -type f -exec cp {} "$CLAUDE_DIR/hooks/" \;
         chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
         echo -e "${CHECK} Updated hooks"
 
