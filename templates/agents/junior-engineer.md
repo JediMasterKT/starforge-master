@@ -121,6 +121,21 @@ else
   echo "ℹ️  No learnings yet (OK for first run)"
 fi
 
+# 8. Check for architecture diagram in ticket
+echo "📐 Checking for architecture diagram in ticket..."
+TICKET_BODY=$(gh issue view $TICKET --json body --jq '.body')
+
+if echo "$TICKET_BODY" | grep -q "```mermaid"; then
+  echo "✅ Architecture diagram present in ticket"
+  echo ""
+  echo "⚠️  MANDATORY: Review the diagram before proceeding"
+  echo "   Open ticket to see rendered diagram:"
+  echo "   → gh issue view $TICKET --web"
+  echo ""
+else
+  echo "ℹ️  No architecture diagram in ticket (OK for simple tasks)"
+fi
+
 # VERIFICATION COMPLETE
 echo ""
 echo "================================"
@@ -130,6 +145,7 @@ echo "✅ Identity: $AGENT_ID"
 echo "✅ Context: PROJECT_CONTEXT.md, TECH_STACK.md read"
 echo "✅ Assignment: Ticket #$TICKET verified"
 echo "✅ Sync: Up-to-date with main"
+echo "✅ Diagram check: Complete"
 echo "✅ Ready to implement"
 echo "================================"
 echo ""
@@ -147,6 +163,78 @@ You work in a dedicated worktree (e.g., `project-name-junior-dev-a`) - an isolat
 - Any files outside your worktree
 
 All work stays in YOUR worktree until merged via PR.
+
+## Architecture Review (MANDATORY Before Coding)
+
+**If your ticket contains an architecture diagram, you MUST review it before writing ANY code.**
+
+### Step 1: Open Ticket in Browser
+```bash
+gh issue view $TICKET --web
+```
+
+Or view in terminal (diagram won't render):
+```bash
+gh issue view $TICKET
+```
+
+### Step 2: Review the Diagram
+
+The ticket's "📐 Architecture" section shows:
+- Component structure (boxes/cylinders)
+- File paths (where to create code)
+- Dependencies (arrows between components)
+- Forbidden patterns (dashed arrows)
+- Database changes (cylinder nodes)
+
+**What to look for:**
+- Which component am I implementing?
+- What file path should I use?
+- What does this component depend on?
+- Are there any forbidden patterns to avoid?
+- What database changes are needed?
+
+### Step 3: Articulate Your Approach
+
+Before coding, write out your implementation plan:
+
+**Example:**
+```
+I will implement Component A in src/component_a.py.
+It depends on Component B (already exists).
+It writes to the database (priority_score column).
+I must NOT call the database directly from Component B (forbidden pattern).
+My tests will go in tests/test_component_a.py.
+```
+
+### Step 4: Confirm Alignment
+
+Ask yourself:
+- ✅ Does my approach match the diagram?
+- ✅ Are component names correct?
+- ✅ Are file paths correct?
+- ✅ Am I following the dependency arrows?
+- ✅ Am I avoiding forbidden patterns?
+
+### Step 5: If Misaligned
+
+If your understanding doesn't match the diagram:
+1. Re-read the diagram carefully
+2. Check the "Components" section below the diagram
+3. Review the "Dependencies" section
+4. If still unclear, ask: "The diagram shows X but I think Y - which is correct?"
+5. **DO NOT proceed until aligned**
+
+### Step 6: Proceed with TDD
+
+Only after confirming your approach matches the diagram, start writing tests.
+
+**Why this matters:**
+- Prevents architectural drift
+- Ensures components integrate correctly
+- Avoids forbidden patterns
+- Reduces review cycles
+- Keeps codebase consistent
 
 ## TDD Workflow (Mandatory Order)
 
