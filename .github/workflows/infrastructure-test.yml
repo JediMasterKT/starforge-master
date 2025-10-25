@@ -1,0 +1,165 @@
+name: Infrastructure Validation
+
+on:
+  push:
+    branches: [ main, develop, 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate-infrastructure:
+    name: Validate StarForge Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Validate File Structure
+        run: |
+          echo "📁 Validating directory structure..."
+
+          # Check critical directories
+          test -d templates || { echo "❌ templates/ missing"; exit 1; }
+          test -d templates/agents || { echo "❌ templates/agents/ missing"; exit 1; }
+          test -d templates/bin || { echo "❌ templates/bin/ missing"; exit 1; }
+          test -d templates/lib || { echo "❌ templates/lib/ missing"; exit 1; }
+
+          echo "✅ Directory structure valid"
+
+      - name: Validate Agent Definitions
+        run: |
+          echo "🤖 Validating agent definitions..."
+
+          for agent in orchestrator senior-engineer junior-engineer qa-engineer tpm-agent; do
+            test -f "templates/agents/${agent}.md" || { echo "❌ ${agent}.md missing"; exit 1; }
+            echo "✅ ${agent}.md exists"
+          done
+
+      - name: Validate Daemon Scripts
+        run: |
+          echo "⚙️  Validating daemon scripts..."
+
+          test -f templates/bin/daemon-runner.sh || { echo "❌ daemon-runner.sh missing"; exit 1; }
+          test -x templates/bin/daemon-runner.sh || { echo "❌ daemon-runner.sh not executable"; exit 1; }
+
+          echo "✅ Daemon scripts valid"
+
+      - name: Validate Libraries
+        run: |
+          echo "📚 Validating library files..."
+
+          # Critical libraries
+          test -f templates/lib/agent-slots.sh || { echo "❌ agent-slots.sh missing"; exit 1; }
+          test -f templates/lib/discord-notify.sh || { echo "❌ discord-notify.sh missing"; exit 1; }
+          test -f templates/lib/logger.sh || { echo "❌ logger.sh missing"; exit 1; }
+          test -f templates/lib/router.sh || { echo "❌ router.sh missing"; exit 1; }
+          test -f templates/lib/project-env.sh || { echo "❌ project-env.sh missing"; exit 1; }
+
+          echo "✅ All libraries present"
+
+      - name: Validate Bash Syntax
+        run: |
+          echo "🔍 Checking bash syntax..."
+
+          # Check all shell scripts for syntax errors
+          find templates -name "*.sh" -type f | while read script; do
+            bash -n "$script" || { echo "❌ Syntax error in $script"; exit 1; }
+            echo "✅ $script syntax valid"
+          done
+
+      - name: Test Daemon Configuration Parsing
+        run: |
+          echo "🧪 Testing daemon configuration..."
+
+          # Create temporary test environment
+          mkdir -p /tmp/starforge-test/.claude/{triggers,logs,daemon}
+          cd /tmp/starforge-test
+
+          # Copy daemon and libraries
+          cp -r $GITHUB_WORKSPACE/templates/bin .claude/
+          cp -r $GITHUB_WORKSPACE/templates/lib .claude/
+          mkdir -p templates/lib
+          cp $GITHUB_WORKSPACE/templates/lib/agent-slots.sh templates/lib/
+
+          # Create test .env
+          cat > .env << 'EOF'
+          export PARALLEL_DAEMON=true
+          export MAX_CONCURRENT_AGENTS=4
+          EOF
+
+          # Test daemon can start (with 5 second timeout)
+          source .env
+          timeout 5 bash .claude/bin/daemon-runner.sh 2>&1 | tee /tmp/daemon-test.log || true
+
+          # Check for expected output
+          grep -q "Parallel execution enabled" /tmp/daemon-test.log || {
+            echo "❌ Daemon did not start with parallel execution"
+            cat /tmp/daemon-test.log
+            exit 1
+          }
+
+          grep -q "max concurrent: 4" /tmp/daemon-test.log || {
+            echo "❌ Daemon did not parse MAX_CONCURRENT_AGENTS correctly"
+            cat /tmp/daemon-test.log
+            exit 1
+          }
+
+          echo "✅ Daemon configuration parsing successful"
+
+      - name: Validate Helper Scripts
+        run: |
+          echo "🔧 Validating helper scripts..."
+
+          for helper in worktree-helpers github-helpers trigger-helpers context-helpers; do
+            test -f "templates/scripts/${helper}.sh" || { echo "❌ ${helper}.sh missing"; exit 1; }
+            bash -n "templates/scripts/${helper}.sh" || { echo "❌ Syntax error in ${helper}.sh"; exit 1; }
+            echo "✅ ${helper}.sh valid"
+          done
+
+      - name: Test Agent Slot Management
+        run: |
+          echo "🎰 Testing agent slot management..."
+
+          # Source the library
+          source templates/lib/agent-slots.sh
+
+          # Set up test environment
+          export SLOTS_FILE=/tmp/test-slots.json
+          echo '{}' > $SLOTS_FILE
+
+          # Test basic operations
+          mark_agent_busy "test-agent" "12345" "test-ticket"
+          is_agent_busy "test-agent" || { echo "❌ Agent not marked busy"; exit 1; }
+
+          PID=$(get_agent_pid "test-agent")
+          [ "$PID" = "12345" ] || { echo "❌ PID not retrieved correctly"; exit 1; }
+
+          mark_agent_idle "test-agent"
+          is_agent_busy "test-agent" && { echo "❌ Agent still marked busy"; exit 1; }
+
+          echo "✅ Agent slot management working correctly"
+
+      - name: Summary
+        run: |
+          echo ""
+          echo "================================================"
+          echo "✅ All infrastructure validation tests passed!"
+          echo "================================================"
+          echo ""
+          echo "Validated:"
+          echo "  - File structure"
+          echo "  - Agent definitions (5)"
+          echo "  - Daemon scripts"
+          echo "  - Library files (5)"
+          echo "  - Helper scripts (4)"
+          echo "  - Bash syntax"
+          echo "  - Configuration parsing"
+          echo "  - Agent slot management"
+          echo ""
