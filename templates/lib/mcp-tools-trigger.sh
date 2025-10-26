@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # MCP Tools - Trigger-based tool implementations
 # These tools are called by the MCP server to access StarForge context
 
