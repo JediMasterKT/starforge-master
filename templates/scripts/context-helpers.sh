@@ -10,14 +10,20 @@ if [ -z "$(type -t get_project_context 2>/dev/null)" ]; then
     source "$SCRIPT_DIR/../lib/mcp-tools-trigger.sh" 2>/dev/null || true
 fi
 
-# Get project context (first 15 lines)
-# Uses MCP tool: get_project_context from mcp-tools-trigger.sh
-# Returns PROJECT_CONTEXT.md contents via MCP
-get_project_context() {
-    # Call MCP tool (already defined in mcp-tools-trigger.sh)
-    # If not available, fall back to direct read
-    if type -t get_project_context_mcp >/dev/null 2>&1; then
-        get_project_context_mcp | head -15
+# ============================================================================
+# PLAINTEXT WRAPPER FUNCTIONS
+# These call the MCP tools and extract plaintext content
+# ============================================================================
+
+# Get project context plaintext (first 15 lines)
+# Wrapper for get_project_context MCP tool
+# Returns plaintext content (not JSON)
+get_project_context_plaintext() {
+    # Try MCP tool first
+    if type -t get_project_context >/dev/null 2>&1; then
+        # Call MCP tool and extract plaintext from JSON
+        local mcp_response=$(get_project_context 2>/dev/null)
+        echo "$mcp_response" | jq -r '.content[0].text' 2>/dev/null | head -15 || cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" 2>/dev/null | head -15
     elif [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
         cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
     else
@@ -26,29 +32,15 @@ get_project_context() {
     fi
 }
 
-# Get building summary from project context
-# Uses grep on MCP tool output
-get_building_summary() {
-    if [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
-        # Use MCP tool if available, otherwise direct read
-        if type -t get_project_context_mcp >/dev/null 2>&1; then
-            get_project_context_mcp | grep '##.*Building' | head -1
-        else
-            grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1
-        fi
-    else
-        echo "Unknown"
-    fi
-}
-
-# Get tech stack (first 15 lines)
-# Uses MCP tool: get_tech_stack from mcp-tools-trigger.sh
-# Returns TECH_STACK.md contents via MCP
-get_tech_stack() {
-    # Call MCP tool (already defined in mcp-tools-trigger.sh)
-    # If not available, fall back to direct read
-    if type -t get_tech_stack_mcp >/dev/null 2>&1; then
-        get_tech_stack_mcp | head -15
+# Get tech stack plaintext (first 15 lines)
+# Wrapper for get_tech_stack MCP tool
+# Returns plaintext content (not JSON)
+get_tech_stack_plaintext() {
+    # Try MCP tool first
+    if type -t get_tech_stack >/dev/null 2>&1; then
+        # Call MCP tool and extract plaintext from JSON
+        local mcp_response=$(get_tech_stack 2>/dev/null)
+        echo "$mcp_response" | jq -r '.content[0].text' 2>/dev/null | head -15 || cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" 2>/dev/null | head -15
     elif [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
         cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -15
     else
@@ -57,31 +49,35 @@ get_tech_stack() {
     fi
 }
 
+# ============================================================================
+# HELPER FUNCTIONS (use the plaintext wrappers above)
+# ============================================================================
+
+# Get building summary from project context
+# Uses grep on plaintext content
+get_building_summary() {
+    if [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
+        get_project_context_plaintext | grep '##.*Building' | head -1
+    else
+        echo "Unknown"
+    fi
+}
+
 # Get primary technology
-# Uses grep on MCP tool output
+# Uses grep on plaintext content
 get_primary_tech() {
     if [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
-        # Use MCP tool if available, otherwise direct read
-        if type -t get_tech_stack_mcp >/dev/null 2>&1; then
-            get_tech_stack_mcp | grep 'Primary:' | head -1
-        else
-            grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1
-        fi
+        get_tech_stack_plaintext | grep 'Primary:' | head -1
     else
         echo "Unknown"
     fi
 }
 
 # Get test command from tech stack
-# Uses grep on MCP tool output
+# Uses grep on plaintext content
 get_test_command() {
     if [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
-        # Use MCP tool if available, otherwise direct read
-        if type -t get_tech_stack_mcp >/dev/null 2>&1; then
-            get_tech_stack_mcp | grep 'Command:' | head -1 | cut -d'`' -f2
-        else
-            grep 'Command:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1 | cut -d'`' -f2
-        fi
+        get_tech_stack_plaintext | grep 'Command:' | head -1 | cut -d'`' -f2
     else
         echo "pytest"  # Default fallback
     fi
@@ -224,34 +220,4 @@ get_subtask_count_from_breakdown() {
     local count=$(echo "$content" | grep -c "^### Subtask" 2>/dev/null || echo "0")
     echo "$count"
     return 0
-}
-
-# ============================================================================
-# MCP TOOL WRAPPERS (for compatibility)
-# ============================================================================
-
-# Wrapper for get_project_context MCP tool
-# Returns raw content without MCP JSON wrapper
-get_project_context_mcp() {
-    if type -t get_project_context >/dev/null 2>&1 && [ "$(type -t get_project_context)" = "function" ]; then
-        # Get MCP response and extract text content
-        local mcp_response=$(get_project_context 2>/dev/null)
-        echo "$mcp_response" | jq -r '.content[0].text' 2>/dev/null || echo "$mcp_response"
-    else
-        # MCP tool not available, use direct read
-        cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" 2>/dev/null
-    fi
-}
-
-# Wrapper for get_tech_stack MCP tool
-# Returns raw content without MCP JSON wrapper
-get_tech_stack_mcp() {
-    if type -t get_tech_stack >/dev/null 2>&1 && [ "$(type -t get_tech_stack)" = "function" ]; then
-        # Get MCP response and extract text content
-        local mcp_response=$(get_tech_stack 2>/dev/null)
-        echo "$mcp_response" | jq -r '.content[0].text' 2>/dev/null || echo "$mcp_response"
-    else
-        # MCP tool not available, use direct read
-        cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" 2>/dev/null
-    fi
 }
