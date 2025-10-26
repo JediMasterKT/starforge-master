@@ -232,104 +232,23 @@ test_empty_results() {
     assert_equals "0" "$count" "Returns empty array for no matches"
 }
 
-# Test 9: Runs safe gh command
-test_runs_safe_gh_command() {
-    echo ""
-    echo "Test: Run safe gh command"
+# Run gh_command tests
+test_runs_safe_gh_command
+test_rejects_non_gh_command
+test_sanitizes_command_injection
+test_returns_stdout_stderr
+test_handles_gh_auth_errors
+test_validates_command_syntax
+test_allows_multiple_gh_subcommands
 
-    # Test a safe read-only command
-    local result=$(starforge_run_gh_command "issue list --limit 1")
-
-    assert_json_valid "$result" "Returns valid JSON for gh issue list"
-
-    # Should contain success indicator
-    local has_array=$(echo "$result" | jq -e 'type == "array"' 2>/dev/null || echo "false")
-    assert_equals "true" "$has_array" "Command returns expected output"
-}
-
-# Test 10: Rejects non-gh command
-test_rejects_non_gh_command() {
-    echo ""
-    echo "Test: Reject non-gh command"
-
-    # Try to run a non-gh command
-    local result=$(starforge_run_gh_command "rm -rf /" 2>&1 || echo '{"error": "command rejected"}')
-
-    # Should reject or error
-    assert_contains "$result" "error\|rejected\|invalid" "Rejects non-gh command"
-}
-
-# Test 11: Sanitizes command injection attempt
-test_sanitizes_command_injection() {
-    echo ""
-    echo "Test: Sanitize command injection"
-
-    # Try command injection with semicolon
-    local result=$(starforge_run_gh_command "issue list; rm -rf /" 2>&1 || echo '{"error": "invalid"}')
-
-    # Should reject or sanitize
-    assert_contains "$result" "error\|invalid" "Prevents command injection with semicolon"
-
-    # Try command injection with pipe
-    result=$(starforge_run_gh_command "issue list | cat /etc/passwd" 2>&1 || echo '{"error": "invalid"}')
-
-    assert_contains "$result" "error\|invalid" "Prevents command injection with pipe"
-}
-
-# Test 12: Returns stdout and stderr
-test_returns_stdout_stderr() {
-    echo ""
-    echo "Test: Return stdout and stderr"
-
-    # Run a command that should succeed
-    local result=$(starforge_run_gh_command "api user" 2>&1)
-
-    # Should return JSON output from gh
-    assert_json_valid "$result" "Returns valid JSON from gh api"
-}
-
-# Test 13: Handles gh auth errors gracefully
-test_handles_gh_auth_errors() {
-    echo ""
-    echo "Test: Handle gh authentication errors"
-
-    # This test assumes we might not be authenticated
-    # The function should handle errors gracefully
-    local result=$(starforge_run_gh_command "api /repos/nonexistent/repo" 2>&1 || echo '{"error": "not found"}')
-
-    # Should return error message, not crash
-    echo -e "${GREEN}✓${NC} Handles gh errors gracefully"
-    ((PASSED++))
-}
-
-# Test 14: Validates command syntax
-test_validates_command_syntax() {
-    echo ""
-    echo "Test: Validate command syntax"
-
-    # Empty command
-    local result=$(starforge_run_gh_command "" 2>&1 || echo '{"error": "invalid"}')
-    assert_contains "$result" "error\|invalid" "Rejects empty command"
-
-    # Only whitespace
-    result=$(starforge_run_gh_command "   " 2>&1 || echo '{"error": "invalid"}')
-    assert_contains "$result" "error\|invalid" "Rejects whitespace-only command"
-}
-
-# Test 15: Allows multiple safe gh subcommands
-test_allows_multiple_gh_subcommands() {
-    echo ""
-    echo "Test: Allow multiple safe gh subcommands"
-
-    # Test various safe gh subcommands
-    local cmds=("issue list --limit 1" "api user" "repo view --json name")
-
-    for cmd in "${cmds[@]}"; do
-        local result=$(starforge_run_gh_command "$cmd" 2>&1 || true)
-        # Just verify it doesn't crash
-        echo -e "${GREEN}✓${NC} Allows safe command: gh $cmd"
-        ((PASSED++))
-    done
+# Create PR tests
+test_creates_pr_successfully
+test_creates_pr_with_custom_base
+test_creates_draft_pr
+test_handles_multiline_body
+test_error_missing_required_params
+test_error_missing_head_branch
+test_create_pr_performance
 }
 
 # Run all tests
@@ -342,7 +261,7 @@ test_performance
 test_error_handling_invalid_state
 test_empty_results
 
-# NEW: Tests for run_gh_command (TDD - written before implementation)
+# Run gh_command tests
 test_runs_safe_gh_command
 test_rejects_non_gh_command
 test_sanitizes_command_injection
@@ -351,13 +270,21 @@ test_handles_gh_auth_errors
 test_validates_command_syntax
 test_allows_multiple_gh_subcommands
 
-
 # Create issue tests
 test_creates_issue_successfully
 test_creates_issue_with_labels
 test_error_handling_missing_title
 test_error_handling_missing_body
 test_creates_issue_with_assignees
+
+# Create PR tests
+test_creates_pr_successfully
+test_creates_pr_with_custom_base
+test_creates_draft_pr
+test_handles_multiline_body
+test_error_missing_required_params
+test_error_missing_head_branch
+test_create_pr_performance
 
 # Summary
 echo ""

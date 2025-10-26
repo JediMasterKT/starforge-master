@@ -196,23 +196,29 @@ starforge_create_issue() {
         return 1
     fi
 
-    # Build gh issue create command
-    local cmd="gh issue create --title \"$title\" --body \"$body\""
+    # Build gh issue create command using array (SECURITY FIX)
+    local gh_args=(
+        "issue"
+        "create"
+        "--title" "$title"
+        "--body" "$body"
+    )
 
     # Add optional parameters
     if [ -n "$labels" ]; then
-        cmd="$cmd --label \"$labels\""
+        gh_args+=("--label" "$labels")
     fi
 
     if [ -n "$assignees" ]; then
-        cmd="$cmd --assignee \"$assignees\""
+        gh_args+=("--assignee" "$assignees")
     fi
 
     # Execute and capture URL
     local issue_url
-    issue_url=$(eval "$cmd" 2>&1)
+    issue_url=$(gh "${gh_args[@]}" 2>&1)
+    local exit_code=$?
 
-    if [ $? -ne 0 ]; then
+    if [ $exit_code -ne 0 ]; then
         echo "Error: Failed to create issue: $issue_url" >&2
         return 1
     fi
@@ -234,7 +240,116 @@ starforge_create_issue() {
         '{number: ($number | tonumber), url: $url}'
 }
 
+# starforge_create_pr - Create a GitHub pull request
+#
+# Wraps `gh pr create` with MCP-friendly JSON output.
+#
+# Args:
+#   --title <title>        PR title (required)
+#   --body <body>          PR body/description
+#   --head <branch>        Head branch (source) (required)
+#   --base <branch>        Base branch (target) (default: main)
+#   --draft                Create as draft PR (optional)
+#
+# Returns:
+#   JSON object with fields:
+#   - number: PR number
+#   - url: PR URL
+#
+# Example:
+#   starforge_create_pr --title "Add feature" --body "Description" --head "feature/test" --base "main"
+#
+starforge_create_pr() {
+    local title=""
+    local body=""
+    local head=""
+    local base="main"
+    local draft=false
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --title)
+                title="$2"
+                shift 2
+                ;;
+            --body)
+                body="$2"
+                shift 2
+                ;;
+            --head)
+                head="$2"
+                shift 2
+                ;;
+            --base)
+                base="$2"
+                shift 2
+                ;;
+            --draft)
+                draft=true
+                shift
+                ;;
+            *)
+                echo "Unknown argument: $1" >&2
+                return 1
+                ;;
+        esac
+    done
+
+    # Validate required parameters
+    if [ -z "$title" ]; then
+        echo "Error: --title is required" >&2
+        return 1
+    fi
+
+    if [ -z "$head" ]; then
+        echo "Error: --head branch is required" >&2
+        return 1
+    fi
+
+    # Build gh pr create command using array (SECURITY FIX)
+    local gh_args=(
+        "pr"
+        "create"
+        "--title" "$title"
+        "--head" "$head"
+        "--base" "$base"
+    )
+
+    # Add body if provided
+    if [ -n "$body" ]; then
+        gh_args+=("--body" "$body")
+    fi
+
+    # Add draft flag if requested
+    if [ "$draft" = true ]; then
+        gh_args+=("--draft")
+    fi
+
+    # Execute command and capture output
+    local pr_url
+    pr_url=$(gh "${gh_args[@]}" 2>&1)
+    local exit_code=$?
+
+    # Check if command succeeded
+    if [ $exit_code -ne 0 ]; then
+        echo "Error creating PR: $pr_url" >&2
+        return 1
+    fi
+
+    # Extract PR number from URL (format: https://github.com/owner/repo/pull/123)
+    local pr_number
+    pr_number=$(echo "$pr_url" | grep -oE '/pull/[0-9]+' | grep -oE '[0-9]+')
+
+    # Return JSON
+    jq -n \
+        --arg number "$pr_number" \
+        --arg url "$pr_url" \
+        '{number: $number, url: $url}'
+}
+
 # Export functions for MCP server use
 export -f starforge_list_issues
 export -f starforge_run_gh_command
 export -f starforge_create_issue
+export -f starforge_create_pr
