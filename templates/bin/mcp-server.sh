@@ -1,9 +1,59 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # MCP Server - JSON-RPC 2.0 Protocol Handler
 # Implements Model Context Protocol server over stdin/stdout
 # Spec: https://spec.modelcontextprotocol.io/
 
 set -euo pipefail
+
+# ============================================================================
+# INITIALIZATION & LIFECYCLE MANAGEMENT
+# ============================================================================
+
+# Check Bash version (require 4.0+)
+check_bash_version() {
+    local bash_major="${BASH_VERSION%%.*}"
+    if [ "$bash_major" -lt 4 ]; then
+        echo "ERROR: Bash 4.0+ required (found $BASH_VERSION)" >&2
+        exit 1
+    fi
+}
+
+# Graceful shutdown handler
+shutdown_handler() {
+    # Log shutdown if daemon.log exists
+    if [ -n "${STARFORGE_CLAUDE_DIR:-}" ] && [ -d "${STARFORGE_CLAUDE_DIR}" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [MCP] Server shutting down gracefully" >> "${STARFORGE_CLAUDE_DIR}/daemon.log" 2>/dev/null || true
+    fi
+    exit 0
+}
+
+# Setup signal handlers for graceful shutdown
+setup_signal_handlers() {
+    trap shutdown_handler SIGTERM SIGINT
+}
+
+# Load tool modules from templates/lib/
+load_tool_modules() {
+    # Determine script directory
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local lib_dir="$script_dir/../lib"
+
+    # Load all MCP tool modules
+    for module in "$lib_dir"/mcp-tools-*.sh; do
+        if [ -f "$module" ]; then
+            source "$module"
+        fi
+    done
+}
+
+# Log server startup
+log_startup() {
+    # Only log if STARFORGE_CLAUDE_DIR is set and daemon.log exists
+    if [ -n "${STARFORGE_CLAUDE_DIR:-}" ] && [ -d "${STARFORGE_CLAUDE_DIR}" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [MCP] Server started (PID: $$)" >> "${STARFORGE_CLAUDE_DIR}/daemon.log" 2>/dev/null || true
+    fi
+}
 
 # JSON-RPC 2.0 error codes
 readonly ERR_PARSE_ERROR=-32700
@@ -11,6 +61,62 @@ readonly ERR_INVALID_REQUEST=-32600
 readonly ERR_METHOD_NOT_FOUND=-32601
 readonly ERR_INVALID_PARAMS=-32602
 readonly ERR_INTERNAL_ERROR=-32603
+
+# ============================================================================
+# TOOL REGISTRY & DISPATCH
+# ============================================================================
+
+# Tool Registry - Associative array for O(1) tool lookup
+declare -A TOOL_HANDLERS
+
+# Register a tool with its handler function
+# Args: tool_name, handler_function
+# Returns: 0 on success, 1 on error
+register_tool() {
+    local tool_name="$1"
+    local handler_function="$2"
+
+    # Validate inputs
+    if [ -z "$tool_name" ] || [ -z "$handler_function" ]; then
+        echo "ERROR: register_tool requires tool_name and handler_function" >&2
+        return 1
+    fi
+
+    # Validate handler function exists
+    if ! type "$handler_function" &>/dev/null; then
+        echo "ERROR: Handler function '$handler_function' not found" >&2
+        return 1
+    fi
+
+    # Warn on overwrite
+    if [ -n "${TOOL_HANDLERS[$tool_name]:-}" ]; then
+        echo "WARNING: Overwriting handler for '$tool_name' (was: ${TOOL_HANDLERS[$tool_name]}, now: $handler_function)" >&2
+    fi
+
+    # Register in associative array
+    TOOL_HANDLERS["$tool_name"]="$handler_function"
+}
+
+# Dispatch tool call to registered handler
+# Args: tool_name, params_json
+# Output: Tool response or error
+dispatch_tool() {
+    local tool_name="$1"
+    local params_json="$2"
+
+    # Check if tool is registered
+    if [ -z "${TOOL_HANDLERS[$tool_name]:-}" ]; then
+        echo "ERROR: Tool '$tool_name' not found in registry" >&2
+        return 1
+    fi
+
+    # Get handler function
+    local handler="${TOOL_HANDLERS[$tool_name]}"
+
+    # Dispatch to handler
+    "$handler" "$params_json"
+}
+
 
 # Parse JSON-RPC request
 # Input: JSON string
@@ -230,9 +336,16 @@ handle_initialize() {
 # Main server loop
 # Reads JSON-RPC requests from stdin, writes responses to stdout
 main() {
+    # Startup sequence
+    check_bash_version
+    setup_signal_handlers
+    load_tool_modules
+    log_startup
+
     # Line-buffered mode for real-time I/O
     stty -icanon 2>/dev/null || true
 
+    # Event loop - process stdin requests
     while IFS= read -r line; do
         # Skip empty lines
         [ -z "$line" ] && continue
