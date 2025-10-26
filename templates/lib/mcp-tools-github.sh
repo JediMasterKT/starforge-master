@@ -51,16 +51,40 @@ starforge_list_issues() {
         esac
     done
 
-    # Build gh issue list command
-    local cmd="gh issue list --json number,title,labels,state --limit $limit --state $state"
+    # Validate state parameter (prevent command injection)
+    case "$state" in
+        open|closed|all)
+            # Valid state
+            ;;
+        *)
+            echo "Invalid state: $state (must be open, closed, or all)" >&2
+            return 1
+            ;;
+    esac
+
+    # Validate limit is a number
+    if ! [[ "$limit" =~ ^[0-9]+$ ]]; then
+        echo "Invalid limit: $limit (must be a number)" >&2
+        return 1
+    fi
+
+    # Build command safely without eval
+    # Use array to avoid injection
+    local gh_args=(
+        "issue"
+        "list"
+        "--json" "number,title,labels,state"
+        "--limit" "$limit"
+        "--state" "$state"
+    )
 
     # Add label filter if provided
     if [ -n "$labels" ]; then
-        cmd="$cmd --label \"$labels\""
+        gh_args+=("--label" "$labels")
     fi
 
-    # Execute and return JSON
-    eval "$cmd" 2>&1
+    # Execute safely (no eval)
+    gh "${gh_args[@]}" 2>&1
 }
 
 # starforge_run_gh_command - Execute arbitrary gh commands safely
