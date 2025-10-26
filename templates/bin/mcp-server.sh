@@ -44,6 +44,17 @@ register_tool() {
         return 1
     fi
 
+    # Validate handler function exists
+    if ! type "$handler_function" &>/dev/null; then
+        echo "ERROR: Handler function '$handler_function' not found" >&2
+        return 1
+    fi
+
+    # Warn on overwrite
+    if [ -n "${TOOL_HANDLERS[$tool_name]:-}" ]; then
+        echo "WARNING: Overwriting handler for '$tool_name' (was: ${TOOL_HANDLERS[$tool_name]}, now: $handler_function)" >&2
+    fi
+
     # Register in associative array
     TOOL_HANDLERS["$tool_name"]="$handler_function"
 }

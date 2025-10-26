@@ -40,6 +40,12 @@ assert_equals() {
 
 # Test 1: Register a tool
 echo "Test 1: register_tool() - Registers tool with handler"
+
+# Create a mock handler (must exist before registration)
+handle_test_tool() {
+    echo '{"result": "test_success"}'
+}
+
 register_tool "test_tool" "handle_test_tool"
 
 # Check if tool is registered
@@ -53,11 +59,6 @@ echo ""
 
 # Test 2: Dispatch to registered tool
 echo "Test 2: dispatch_tool() - Dispatches to correct handler"
-
-# Create a mock handler
-handle_test_tool() {
-    echo '{"result": "test_success"}'
-}
 
 # Dispatch to the tool
 result=$(dispatch_tool "test_tool" '{"param": "value"}')
@@ -146,6 +147,11 @@ echo ""
 # Test 6: Multiple tool registrations
 echo "Test 6: Multiple tools - Can register and dispatch to multiple tools"
 
+# Create mock handlers (must exist before registration)
+handle_a() { echo '{"tool": "a"}'; }
+handle_b() { echo '{"tool": "b"}'; }
+handle_c() { echo '{"tool": "c"}'; }
+
 # Register multiple tools
 register_tool "tool_a" "handle_a"
 register_tool "tool_b" "handle_b"
@@ -167,6 +173,50 @@ if [ "$tool_count" -ge 3 ]; then
     echo -e "${GREEN}✓ PASS: Tool count correct (>= 3 tools)${NC}"
 else
     echo -e "${RED}✗ FAIL: Expected >= 3 tools, got $tool_count${NC}"
+    exit 1
+fi
+echo ""
+
+# Test 7: Handler validation - reject non-existent handler
+echo "Test 7: register_tool() - Rejects non-existent handler function"
+
+# Try to register a tool with non-existent handler
+if register_tool "invalid_tool" "nonexistent_handler" 2>/dev/null; then
+    echo -e "${RED}✗ FAIL: Should reject non-existent handler${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✓ PASS: Correctly rejects non-existent handler${NC}"
+fi
+echo ""
+
+# Test 8: Overwrite warning - warn when re-registering tool
+echo "Test 8: register_tool() - Warns when overwriting existing tool"
+
+# Register a tool
+handle_overwrite_test() { echo '{"version": "1"}'; }
+register_tool "overwrite_test" "handle_overwrite_test" 2>/dev/null
+
+# Re-register the same tool with different handler (capture warning to temp file)
+handle_overwrite_test_v2() { echo '{"version": "2"}'; }
+warning_file=$(mktemp)
+register_tool "overwrite_test" "handle_overwrite_test_v2" 2>"$warning_file"
+warning_output=$(cat "$warning_file")
+rm -f "$warning_file"
+
+# Check if warning was issued
+if echo "$warning_output" | grep -q "WARNING.*Overwriting"; then
+    echo -e "${GREEN}✓ PASS: Warning issued on tool overwrite${NC}"
+else
+    echo -e "${RED}✗ FAIL: No warning on tool overwrite${NC}"
+    echo "  Output: $warning_output"
+    exit 1
+fi
+
+# Verify the handler was actually overwritten
+if [ "${TOOL_HANDLERS[overwrite_test]:-}" = "handle_overwrite_test_v2" ]; then
+    echo -e "${GREEN}✓ PASS: Tool handler successfully overwritten${NC}"
+else
+    echo -e "${RED}✗ FAIL: Tool handler not overwritten${NC}"
     exit 1
 fi
 echo ""
