@@ -507,6 +507,13 @@ REPORT
   gh pr edit $PR_NUMBER --remove-label "needs-review" --add-label "qa-approved"
   echo "✅ Updated PR labels: needs-review → qa-approved"
 
+  # Get PR URL for notification
+  PR_URL=$(gh pr view $PR_NUMBER --json url --jq .url)
+
+  # Send Discord notification (green)
+  source $STARFORGE_CLAUDE_DIR/lib/router.sh
+  notify_qa_approved "$PR_NUMBER" "$PR_URL"
+
   echo "✅ PR #$PR_NUMBER APPROVED (orchestrator/human will merge)"
 
   # IMMEDIATELY create trigger (atomic with approval - cannot be skipped)
@@ -619,6 +626,21 @@ ISSUES
   # Update labels: remove needs-review, add qa-declined
   gh pr edit $PR_NUMBER --remove-label "needs-review" --add-label "qa-declined"
   echo "✅ Updated PR labels: needs-review → qa-declined"
+
+  # Get PR URL for notification
+  PR_URL=$(gh pr view $PR_NUMBER --json url --jq .url)
+
+  # Build feedback summary (first failed gate reason)
+  FEEDBACK=""
+  [ "$GATE1_STATUS" = "FAILED" ] && FEEDBACK="$GATE1_REASON"
+  [ -z "$FEEDBACK" ] && [ "$GATE2_STATUS" = "FAILED" ] && FEEDBACK="$GATE2_REASON"
+  [ -z "$FEEDBACK" ] && [ "$GATE3_STATUS" = "FAILED" ] && FEEDBACK="$GATE3_REASON"
+  [ -z "$FEEDBACK" ] && [ "$GATE4_STATUS" = "FAILED" ] && FEEDBACK="$GATE4_REASON"
+  [ -z "$FEEDBACK" ] && [ "$GATE5_STATUS" = "FAILED" ] && FEEDBACK="$GATE5_REASON"
+
+  # Send Discord notification (yellow)
+  source $STARFORGE_CLAUDE_DIR/lib/router.sh
+  notify_qa_rejected "$PR_NUMBER" "$PR_URL" "$FEEDBACK"
 
   # Comment on ticket
   gh issue comment $TICKET \

@@ -3,6 +3,19 @@
 # Routes trigger files to agent queues
 # Part of queue system implementation
 
+# Source discord-notify.sh for notification functions
+# (Tests may mock these functions, so check if already loaded)
+if [ -z "$(type -t send_discord_daemon_notification 2>/dev/null)" ]; then
+    # Try to source discord-notify.sh from multiple possible locations
+    if [ -f "$(dirname "${BASH_SOURCE[0]}")/discord-notify.sh" ]; then
+        source "$(dirname "${BASH_SOURCE[0]}")/discord-notify.sh"
+    elif [ -f ".claude/lib/discord-notify.sh" ]; then
+        source .claude/lib/discord-notify.sh
+    elif [ -f "templates/lib/discord-notify.sh" ]; then
+        source templates/lib/discord-notify.sh
+    fi
+fi
+
 # Source logger if available (tests provide their own)
 if [ -z "$(type -t log_info 2>/dev/null)" ]; then
     # Fallback logger functions
@@ -126,3 +139,247 @@ EOF
 
     return 0
 }
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Agent Blocked Notifications
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#
+# notify_agent_blocked <agent> <question> <ticket>
+#
+# Sends Discord notification with @mention when agent needs human input.
+# This triggers push notification with sound on user's mobile device.
+#
+# Args:
+#   agent: Agent name (e.g., "junior-dev-a")
+#   question: Question/ambiguity encountered (max 200 chars)
+#   ticket: Ticket number (e.g., "42")
+#
+# Example:
+#   notify_agent_blocked "junior-dev-a" "Should I use REST or GraphQL?" "42"
+#
+notify_agent_blocked() {
+    local agent=$1
+    local question=$2
+    local ticket=$3
+
+    # Validate inputs
+    if [ -z "$agent" ]; then
+        log_error "router" "notify_agent_blocked: agent required"
+        return 1
+    fi
+
+    if [ -z "$question" ]; then
+        question="Agent is blocked, check logs"
+    fi
+
+    if [ -z "$ticket" ]; then
+        ticket="N/A"
+    fi
+
+    # Truncate question to 200 chars
+    if [ ${#question} -gt 200 ]; then
+        question="${question:0:197}..."
+    fi
+
+    # Escape special characters for JSON
+    question=$(echo "$question" | sed 's/"/\\"/g' | sed "s/'/\\'/g")
+
+    # Build description with @mention if DISCORD_USER_ID set
+    local description
+    if [ -n "$DISCORD_USER_ID" ]; then
+        description="<@${DISCORD_USER_ID}> - Agent needs input
+
+**Agent:** $agent
+**Question:** $question
+**Ticket:** #$ticket
+
+**Action:** Run \`starforge use $agent\` to continue or reply in this thread."
+    else
+        description="**Agent:** $agent
+**Question:** $question
+**Ticket:** #$ticket
+
+**Action:** Run \`starforge use $agent\` to continue or reply in this thread."
+    fi
+
+    # Build fields JSON
+    local fields='[
+  {"name":"Question","value":"'"$question"'","inline":false},
+  {"name":"Ticket","value":"#'"$ticket"'","inline":true},
+  {"name":"Action","value":"Run `starforge use '"$agent"'` to continue","inline":true}
+]'
+
+    # Send notification with warning color (yellow)
+    send_discord_daemon_notification \
+        "$agent" \
+        "⚠️ Agent Blocked - Human Input Needed" \
+        "$description" \
+        "$COLOR_WARNING" \
+        "$fields"
+
+    log_info "router" "Agent $agent blocked notification sent (ticket: $ticket)"
+}
+
+# Export function for use in other scripts
+export -f notify_agent_blocked
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# QA Review Notifications
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#
+# notify_qa_approved <pr_number> <pr_url>
+#
+# Sends Discord notification when QA approves PR.
+# Uses green color (COLOR_SUCCESS).
+#
+# Args:
+#   pr_number: PR number (e.g., "167")
+#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
+#
+# Example:
+#   notify_qa_approved "167" "https://github.com/user/repo/pull/167"
+#
+notify_qa_approved() {
+    local pr_number="$1"
+    local pr_url="$2"
+
+    # Validate inputs
+    if [ -z "$pr_number" ] || [ -z "$pr_url" ]; then
+        log_warn "router" "notify_qa_approved: Missing required arguments"
+        return 1
+    fi
+
+    # Build notification description
+    local description="PR #${pr_number} approved for merge
+✅ All quality gates passed
+✅ Ready to merge
+
+👉 View PR: ${pr_url}"
+
+    # Send notification to qa-engineer channel
+    send_discord_daemon_notification \
+        "qa-engineer" \
+        "✅ QA Approved" \
+        "$description" \
+        "$COLOR_SUCCESS" \
+        '[]'
+
+    log_info "router" "Sent QA approved notification for PR #${pr_number}"
+    return 0
+}
+
+#
+# notify_qa_rejected <pr_number> <pr_url> <feedback>
+#
+# Sends Discord notification when QA requests changes on PR.
+# Uses yellow color (COLOR_WARNING).
+# Truncates feedback to 200 chars to keep notification concise.
+#
+# Args:
+#   pr_number: PR number (e.g., "167")
+#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
+#   feedback: QA feedback/issues (will be truncated to 200 chars)
+#
+# Example:
+#   notify_qa_rejected "167" "https://github.com/user/repo/pull/167" "Please add integration tests"
+#
+notify_qa_rejected() {
+    local pr_number="$1"
+    local pr_url="$2"
+    local feedback="$3"
+
+    # Validate inputs
+    if [ -z "$pr_number" ] || [ -z "$pr_url" ]; then
+        log_warn "router" "notify_qa_rejected: Missing required arguments"
+        return 1
+    fi
+
+    # Handle empty feedback
+    if [ -z "$feedback" ]; then
+        feedback="No feedback provided"
+    fi
+
+    # Truncate feedback to 200 chars
+    if [ ${#feedback} -gt 200 ]; then
+        feedback="${feedback:0:200}..."
+    fi
+
+    # Build notification description
+    local description="PR #${pr_number} needs changes
+❌ QA requested changes
+
+**Feedback:**
+${feedback}
+
+👉 View PR: ${pr_url}"
+
+    # Send notification to qa-engineer channel
+    send_discord_daemon_notification \
+        "qa-engineer" \
+        "⚠️ QA Changes Requested" \
+        "$description" \
+        "$COLOR_WARNING" \
+        '[]'
+
+    log_info "router" "Sent QA rejected notification for PR #${pr_number}"
+    return 0
+}
+
+#
+# notify_pr_created <pr_number> <pr_url> <ticket> <agent>
+#
+# Sends Discord notification when PR is created and ready for review.
+#
+# Args:
+#   pr_number: PR number (e.g., "167")
+#   pr_url: PR URL (e.g., "https://github.com/user/repo/pull/167")
+#   ticket: Ticket number (e.g., "42" or "#42")
+#   agent: Agent name (e.g., "junior-dev-a")
+#
+# Example:
+#   notify_pr_created "167" "https://github.com/user/repo/pull/167" "42" "junior-dev-a"
+#
+notify_pr_created() {
+    local pr_number=$1
+    local pr_url=$2
+    local ticket=$3
+    local agent=$4
+
+    # Skip notification if Discord not available
+    if [ -z "$(type -t send_discord_daemon_notification 2>/dev/null)" ]; then
+        return 0
+    fi
+
+    # Add # prefix to ticket if not present
+    if [[ "$ticket" != \#* ]] && [ -n "$ticket" ]; then
+        ticket="#${ticket}"
+    fi
+
+    # Build description with clickable PR link
+    local description="PR ready for review
+
+**PR:** [#${pr_number}](${pr_url})
+**Ticket:** ${ticket}
+
+Click link above to review the PR"
+
+    # Build fields JSON (PR number and ticket)
+    local fields="[{\"name\":\"PR\",\"value\":\"#${pr_number}\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"${ticket}\",\"inline\":true}]"
+
+    # Send notification with INFO color (blue)
+    send_discord_daemon_notification \
+        "$agent" \
+        "📋 PR Ready for Review" \
+        "$description" \
+        "$COLOR_INFO" \
+        "$fields"
+
+    log_info "router" "PR created notification sent for PR #$pr_number (agent: $agent, ticket: $ticket)"
+}
+
+# Export functions for use in other scripts
+export -f notify_qa_approved
+export -f notify_qa_rejected
+export -f notify_pr_created
