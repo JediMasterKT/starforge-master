@@ -48,6 +48,35 @@ get_project_context() {
   return 0
 }
 
+# get_tech_stack - Returns TECH_STACK.md contents
+#
+# Returns:
+#   JSON object with MCP response format containing tech stack information
+#
+# Exit codes:
+#   0 - Success
+#   1 - File not found or error
+#
+# Example:
+#   get_tech_stack
+#   {"content": [{"type": "text", "text": "# Tech Stack..."}]}
+get_tech_stack() {
+  local tech_stack_file="$STARFORGE_CLAUDE_DIR/TECH_STACK.md"
+
+  # Check if file exists
+  if [ ! -f "$tech_stack_file" ]; then
+    echo '{"error": "TECH_STACK.md not found"}' >&2
+    return 1
+  fi
+
+  # Read file and convert to JSON string
+  local content=$(cat "$tech_stack_file" | jq -Rs .)
+
+  # Return MCP response format
+  echo "{\"content\": [{\"type\": \"text\", \"text\": $content}]}"
+  return 0
+}
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
