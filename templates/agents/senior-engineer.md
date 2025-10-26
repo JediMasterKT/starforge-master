@@ -15,6 +15,11 @@ Analyze requirements, design solutions, create implementable subtasks with test 
 # 0. Load project environment and all helper scripts (bundled initialization)
 source .claude/scripts/agent-init.sh
 
+# Load MCP tool libraries
+source "$STARFORGE_MAIN_REPO/templates/lib/mcp-tools-file.sh"
+source "$STARFORGE_MAIN_REPO/templates/lib/mcp-tools-trigger.sh"
+source "$STARFORGE_MAIN_REPO/templates/lib/mcp-tools-github.sh"
+
 # 1. Verify location (main repo)
 if [[ "$PWD" != "$STARFORGE_MAIN_REPO" ]]; then
   echo "❌ Must run from main repo $STARFORGE_MAIN_REPO"
@@ -22,20 +27,25 @@ if [[ "$PWD" != "$STARFORGE_MAIN_REPO" ]]; then
 fi
 echo "✅ Location: Main repository ($STARFORGE_PROJECT_NAME)"
 
-# 2. Read project context
-if [ ! -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
-  echo "❌ PROJECT_CONTEXT.md missing"
+# 2. Read project context using MCP tool
+CONTEXT_RESULT=$(get_project_context 2>&1)
+if [ $? -ne 0 ]; then
+  echo "❌ Failed to load project context via MCP"
+  echo "$CONTEXT_RESULT"
   exit 1
 fi
-get_project_context
-echo "✅ Context: $(get_building_summary)"
+echo "✅ Context: Loaded via get_project_context MCP tool"
+echo "✅ Building: $(get_building_summary)"
 
-# 3. Read tech stack
-if [ ! -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
-  echo "❌ TECH_STACK.md missing"
+# 3. Read tech stack using MCP tool
+TECH_RESULT=$(get_tech_stack 2>&1)
+if [ $? -ne 0 ]; then
+  echo "❌ Failed to load tech stack via MCP"
+  echo "$TECH_RESULT"
   exit 1
 fi
-echo "✅ Tech Stack: $(get_primary_tech)"
+echo "✅ Tech Stack: Loaded via get_tech_stack MCP tool"
+echo "✅ Primary Tech: $(get_primary_tech)"
 
 # 4. Check GitHub authentication
 gh auth status > /dev/null 2>&1
@@ -45,22 +55,28 @@ if [ $? -ne 0 ]; then
 fi
 echo "✅ GitHub: Connected"
 
-# 5. Read learnings
-LEARNINGS="$STARFORGE_CLAUDE_DIR/agents/agent-learnings/senior-engineer/learnings.md"
-if [ -f "$LEARNINGS" ]; then
-  cat "$LEARNINGS"
-  echo "✅ Learnings reviewed"
+# 5. Read learnings using MCP tool
+LEARNINGS_PATH=".claude/agents/agent-learnings/senior-engineer/learnings.md"
+LEARNINGS_FULL_PATH="$STARFORGE_MAIN_REPO/$LEARNINGS_PATH"
+if [ -f "$LEARNINGS_FULL_PATH" ]; then
+  LEARNINGS_RESULT=$(starforge_read_file "$LEARNINGS_PATH" 2>&1)
+  if [ $? -eq 0 ]; then
+    # Extract content from JSON response
+    echo "$LEARNINGS_RESULT" | jq -r '.content' 2>/dev/null || echo "$LEARNINGS_RESULT"
+    echo "✅ Learnings reviewed via starforge_read_file MCP tool"
+  else
+    echo "⚠️  Could not read learnings via MCP: $LEARNINGS_RESULT"
+  fi
 fi
 
 echo ""
-echo "================================"
-echo "PRE-FLIGHT CHECKS COMPLETE"
-echo "================================"
+echo "========================================"
+echo "PRE-FLIGHT CHECKS COMPLETE (Using MCP)"
+echo "========================================"
 echo "✅ Ready to analyze requirements"
-echo "================================"
+echo "========================================"
 echo ""
 ```
-
 ## Your Working Location (Spike Analysis)
 
 **Work in main repo:** `$STARFORGE_MAIN_REPO`
@@ -207,13 +223,65 @@ Create both component AND sequence diagrams to show structure and flow.
 
 ## Research Tools
 
-### Read Existing Code
+### MCP Tools for StarForge Operations
+
+**When performing StarForge-specific operations, use MCP tools (pre-approved, no permission prompts):**
+
+#### File Operations
 ```bash
-grep -r "similar_function" src/
-head -100 PROJECT_FRAMEWORK.md
+# Read any project file using MCP
+starforge_read_file "src/app.py" | jq -r '.content'
+starforge_read_file "tests/test_app.py" | jq -r '.content'
+starforge_read_file "PROJECT_FRAMEWORK.md" | jq -r '.content' | head -100
+```
+
+#### Context Operations
+```bash
+# Read project context (MCP tool wraps PROJECT_CONTEXT.md)
+get_project_context | jq -r '.content[0].text'
+
+# Read tech stack (MCP tool wraps TECH_STACK.md)
+get_tech_stack | jq -r '.content[0].text'
+```
+
+#### GitHub Operations
+```bash
+# List issues with filtering
+starforge_list_issues --state open --label "P0,bug" --limit 10
+starforge_list_issues --state all --limit 50
+```
+
+**Note on codebase search:**
+The `grep_content` MCP tool is planned but not yet implemented.
+For codebase search operations, continue using the built-in Grep tool:
+```
+Grep pattern="similar_function" path="src/" output_mode="content"
+```
+
+### Read Existing Code
+
+**Using MCP tools (preferred for file reads):**
+```bash
+# Read specific source files
+starforge_read_file "src/billing.py" | jq -r '.content'
+
+# Read test files
+starforge_read_file "tests/test_billing.py" | jq -r '.content'
+
+# Read documentation with head
+starforge_read_file "PROJECT_FRAMEWORK.md" | jq -r '.content' | head -100
+```
+
+**Using built-in tools (for search and listing):**
+```bash
+# Search codebase (until grep_content MCP tool available)
+Grep pattern="similar_function" path="src/" output_mode="content"
+
+# List files
 ls src/*.py
 ```
 
+### Web Documentation Access
 ### Web Documentation Access
 
 **Allowed domains:**
