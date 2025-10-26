@@ -13,21 +13,22 @@
 #   --state <open|closed|all>  Filter by issue state (default: open)
 #   --label <labels>           Filter by labels (comma-separated)
 #   --limit <N>                Limit number of results (default: 30)
+#   --format <concise|detailed> Response format (default: concise)
+#                               concise: "#number: title" (saves tokens)
+#                               detailed: Full JSON with metadata
 #
 # Returns:
-#   JSON array of issues with fields:
-#   - number: Issue number
-#   - title: Issue title
-#   - labels: Array of label objects with name
-#   - state: Issue state (open/closed)
+#   Concise format: Plain text list "#42: Issue title"
+#   Detailed format: JSON array with number, title, labels, state
 #
 # Example:
-#   starforge_list_issues --state open --label "bug,P1" --limit 10
+#   starforge_list_issues --state open --label "bug,P1" --limit 10 --format concise
 #
 starforge_list_issues() {
     local state="open"
     local labels=""
     local limit="30"
+    local format="concise"
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -42,6 +43,10 @@ starforge_list_issues() {
                 ;;
             --limit)
                 limit="$2"
+                shift 2
+                ;;
+            --format)
+                format="$2"
                 shift 2
                 ;;
             *)
@@ -84,7 +89,23 @@ starforge_list_issues() {
     fi
 
     # Execute safely (no eval)
-    gh "${gh_args[@]}" 2>&1
+    local issues=$(gh "${gh_args[@]}" 2>&1)
+
+    # Validate format parameter
+    case "$format" in
+        concise)
+            # Concise format: "#number: title" (saves tokens)
+            echo "$issues" | jq -r '.[] | "#\(.number): \(.title)"'
+            ;;
+        detailed)
+            # Detailed format: Full JSON with metadata
+            echo "$issues"
+            ;;
+        *)
+            echo "Invalid format: $format (must be concise or detailed)" >&2
+            return 1
+            ;;
+    esac
 }
 
 # starforge_run_gh_command - Execute arbitrary gh commands safely

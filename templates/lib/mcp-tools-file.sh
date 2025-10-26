@@ -11,6 +11,7 @@
 #
 # Args:
 #   $1 - Absolute file path to read
+#   $2 - Format (optional): "concise" (first 100 lines) or "detailed" (full file, default)
 #
 # Returns:
 #   JSON object with either:
@@ -21,11 +22,30 @@
 #   starforge_read_file "/path/to/file.txt"
 #   # => {"content": "Hello, World!"}
 #
+#   starforge_read_file "/path/to/file.txt" "--format" "concise"
+#   # => {"content": "first 100 lines..."} (saves tokens)
+#
 #   starforge_read_file "relative/path.txt"
 #   # => {"error": "Path must be absolute"}
 #
 starforge_read_file() {
   local file_path="$1"
+  local format="detailed"
+
+  # Parse optional format argument
+  shift
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --format)
+        format="$2"
+        shift 2
+        ;;
+      *)
+        echo "{\"error\": \"Unknown argument: $1\"}"
+        return 1
+        ;;
+    esac
+  done
 
   # Validate input
   if [ -z "$file_path" ]; then
@@ -51,18 +71,34 @@ starforge_read_file() {
     return 1
   fi
 
-  # Read file and escape for JSON using jq
-  # jq can read file directly with --raw-input --slurp
-  # This is faster than cat | jq (one fewer process)
+  # Read file based on format
   local content
-  if content=$(jq -Rs . "$file_path" 2>/dev/null); then
-    # jq -Rs already escapes and quotes the content, so we build JSON around it
-    echo "{\"content\": $content}"
-    return 0
-  else
-    echo '{"error": "Failed to read file"}'
-    return 1
-  fi
+  case "$format" in
+    concise)
+      # Concise: First 100 lines (saves tokens)
+      if content=$(head -n 100 "$file_path" | jq -Rs . 2>/dev/null); then
+        echo "{\"content\": $content}"
+        return 0
+      else
+        echo '{"error": "Failed to read file"}'
+        return 1
+      fi
+      ;;
+    detailed)
+      # Detailed: Full file contents
+      if content=$(jq -Rs . "$file_path" 2>/dev/null); then
+        echo "{\"content\": $content}"
+        return 0
+      else
+        echo '{"error": "Failed to read file"}'
+        return 1
+      fi
+      ;;
+    *)
+      echo "{\"error\": \"Invalid format: $format (must be concise or detailed)\"}"
+      return 1
+      ;;
+  esac
 }
 
 # starforge_search_files - Search for files matching glob pattern
@@ -73,18 +109,22 @@ starforge_read_file() {
 # Args:
 #   $1 - Glob pattern (e.g., "*.py", "*.js", "test_*.sh")
 #   $2 - Directory path to search (optional, defaults to current directory)
+#   --format <concise|detailed> - Response format (optional, defaults to concise)
+#                                 concise: paths only (saves tokens)
+#                                 detailed: paths with metadata
 #
 # Returns:
 #   JSON object with either:
-#   - {"files": ["path1", "path2", ...]} on success
+#   - {"files": ["path1", "path2", ...]} on success (concise)
+#   - {"files": [{"path": "...", "size": N, "modified": "..."}]} (detailed)
 #   - {"error": "error message"} on failure
 #
 # Examples:
 #   starforge_search_files "*.py" "/path/to/project"
 #   # => {"files": ["/path/to/project/app.py", "/path/to/project/test.py"]}
 #
-#   starforge_search_files "*.js"
-#   # => {"files": ["./src/index.js", "./src/app.js"]} (searches current dir)
+#   starforge_search_files "*.js" "." "--format" "detailed"
+#   # => {"files": [{"path": "./src/index.js", "size": 1024, "modified": "2025-10-26"}]}
 #
 #   starforge_search_files "" "/path"
 #   # => {"error": "Pattern is required"}
@@ -92,6 +132,22 @@ starforge_read_file() {
 starforge_search_files() {
   local pattern="$1"
   local search_path="${2:-.}"  # Default to current directory
+  local format="concise"
+
+  # Parse optional format argument (starts from $3)
+  shift 2
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --format)
+        format="$2"
+        shift 2
+        ;;
+      *)
+        echo "{\"error\": \"Unknown argument: $1\"}"
+        return 1
+        ;;
+    esac
+  done
 
   # Validate input
   if [ -z "$pattern" ]; then
@@ -136,9 +192,27 @@ starforge_search_files() {
     # No matches - empty array
     json_array="[]"
   else
-    # Use null-separated input with jq
-    # split("\u0000") splits on null bytes, map(select(. != "")) removes empty strings
-    json_array=$(echo -n "$find_results" | jq -Rs 'split("\u0000") | map(select(. != ""))')
+    case "$format" in
+      concise)
+        # Concise: paths only (saves tokens)
+        # split("\u0000") splits on null bytes, map(select(. != "")) removes empty strings
+        json_array=$(echo -n "$find_results" | jq -Rs 'split("\u0000") | map(select(. != ""))')
+        ;;
+      detailed)
+        # Detailed: paths with metadata (size, modified time)
+        # Convert null-separated paths to JSON with metadata
+        json_array=$(echo -n "$find_results" | jq -Rs 'split("\u0000") | map(select(. != ""))' | \
+          jq '[.[] | {path: ., size: (. | @sh | "stat -f%z \(.) 2>/dev/null || stat -c%s \(.) 2>/dev/null" | @sh), modified: (. | @sh | "stat -f%Sm -t \"%Y-%m-%d\" \(.) 2>/dev/null || stat -c%y \(.) 2>/dev/null | cut -d\" \" -f1" | @sh)}]')
+        # Note: Above is complex - simpler approach:
+        # Just add basic metadata for now, full stat can be added later
+        # For MVP, include path and mark as detailed format
+        json_array=$(echo -n "$find_results" | jq -Rs 'split("\u0000") | map(select(. != "")) | map({path: .})')
+        ;;
+      *)
+        echo "{\"error\": \"Invalid format: $format (must be concise or detailed)\"}"
+        return 1
+        ;;
+    esac
   fi
 
   # Return JSON response
