@@ -368,3 +368,159 @@ send_trigger_invalid_notification() {
     "$COLOR_ERROR" \
     "$fields"
 }
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PR-Specific Notifications
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#
+# send_pr_ready_notification <agent> <pr_number> <pr_title> <test_status> <coverage_change> <pr_url>
+#
+# Sends notification when PR is ready for review.
+#
+# Args:
+#   agent: Agent name (e.g., "junior-dev-a")
+#   pr_number: PR number (e.g., "200")
+#   pr_title: PR title (e.g., "Add authentication feature")
+#   test_status: Test status (e.g., "47/47")
+#   coverage_change: Coverage change (e.g., "87% → 91%")
+#   pr_url: PR URL (e.g., "https://github.com/user/repo/pull/200")
+#
+send_pr_ready_notification() {
+  local agent=$1
+  local pr_number=$2
+  local pr_title=$3
+  local test_status=$4
+  local coverage_change=$5
+  local pr_url=$6
+
+  local description="Feature implemented (#${pr_number})
+PR ready for review
+✅ All tests passing (${test_status})
+📊 Coverage: ${coverage_change}
+
+👉 Review PR: ${pr_url}"
+
+  local fields='[]'
+
+  send_discord_daemon_notification \
+    "$agent" \
+    "🟢 PR Ready for Review" \
+    "$description" \
+    "$COLOR_SUCCESS" \
+    "$fields"
+}
+
+#
+# send_qa_approved_notification <agent> <pr_number> <validation_results> <merge_command>
+#
+# Sends notification when QA approves PR.
+#
+# Args:
+#   agent: Agent name (e.g., "qa-engineer")
+#   pr_number: PR number (e.g., "200")
+#   validation_results: Validation summary (e.g., "Security: ✅  Performance: ✅  Tests: ✅")
+#   merge_command: Command to merge (e.g., "gh pr merge 200 --squash")
+#
+send_qa_approved_notification() {
+  local agent=$1
+  local pr_number=$2
+  local validation_results=$3
+  local merge_command=$4
+
+  local description="PR #${pr_number} approved for merge
+No issues found
+${validation_results}
+
+👉 Merge: \`${merge_command}\`"
+
+  local fields='[]'
+
+  send_discord_daemon_notification \
+    "$agent" \
+    "✅ QA Approved" \
+    "$description" \
+    "$COLOR_SUCCESS" \
+    "$fields"
+}
+
+#
+# send_tests_failed_notification <agent> <pr_number> <error_message> <error_location> <logs_command>
+#
+# Sends notification when tests fail with @mention for urgent attention.
+#
+# Args:
+#   agent: Agent name (e.g., "junior-dev-b")
+#   pr_number: PR number (e.g., "201")
+#   error_message: Error message (e.g., "TypeError: Cannot read property 'email' of undefined")
+#   error_location: Error location (e.g., "at auth.ts:42:18")
+#   logs_command: Command to view logs (e.g., "starforge logs junior-dev-b")
+#
+send_tests_failed_notification() {
+  local agent=$1
+  local pr_number=$2
+  local error_message=$3
+  local error_location=$4
+  local logs_command=$5
+
+  # Get user mention from config (if configured)
+  local user_mention="${DISCORD_USER_ID:-}"
+  local mention_text=""
+  if [ -n "$user_mention" ]; then
+    mention_text="${user_mention} - Need human review
+"
+  fi
+
+  local description="Tests failing on PR #${pr_number}
+\`\`\`
+${error_message}
+${error_location}
+\`\`\`
+
+${mention_text}👉 View logs: \`${logs_command}\`"
+
+  local fields='[]'
+
+  send_discord_daemon_notification \
+    "$agent" \
+    "❌ Tests Failed" \
+    "$description" \
+    "$COLOR_ERROR" \
+    "$fields"
+}
+
+#
+# send_feature_complete_notification <agent> <pr_count> <coverage_change> <time_elapsed> <merge_instructions>
+#
+# Sends notification when entire feature (multiple PRs) is complete.
+#
+# Args:
+#   agent: Agent name (e.g., "orchestrator")
+#   pr_count: Number of PRs (e.g., "3")
+#   coverage_change: Coverage change (e.g., "87% → 93%")
+#   time_elapsed: Time elapsed (e.g., "4h 23m")
+#   merge_instructions: Instructions to merge (e.g., "Merge all PRs: gh pr merge 200 201 202 --squash")
+#
+send_feature_complete_notification() {
+  local agent=$1
+  local pr_count=$2
+  local coverage_change=$3
+  local time_elapsed=$4
+  local merge_instructions=$5
+
+  local description="All tickets completed
+PRs ready: ${pr_count}
+📊 Coverage: ${coverage_change}
+⏱️  Time: ${time_elapsed}
+
+👉 ${merge_instructions}"
+
+  local fields='[]'
+
+  send_discord_daemon_notification \
+    "$agent" \
+    "🎉 Feature Complete" \
+    "$description" \
+    "$COLOR_SUCCESS" \
+    "$fields"
+}
