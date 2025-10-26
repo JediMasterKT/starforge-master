@@ -112,6 +112,27 @@ Launches Main Claude to analyze your project and generate:
 - `TECH_STACK.md`: Technologies and architecture
 - `initial-assessment.md`: Current state analysis
 
+### `starforge update`
+
+Updates StarForge agents and scripts from the latest templates.
+
+**Interactive Mode** (default):
+```bash
+starforge update
+# Shows diff preview, prompts for confirmation
+```
+
+**Non-Interactive Mode** (for automation/CI/CD):
+```bash
+starforge update --force
+# Skips interactive prompt, applies changes immediately
+```
+
+Use `--force` when:
+- Running in CI/CD pipelines
+- Using in Claude Code (non-TTY environment)
+- Automating updates in scripts
+
 ### `starforge use <agent>`
 
 Invokes a specific agent:
