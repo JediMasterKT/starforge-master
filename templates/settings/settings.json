@@ -4,9 +4,14 @@
       "Read",
       "Write",
       "Edit",
+      "MultiEdit",
       "Grep",
       "Glob",
-      "Bash"
+      "LS",
+      "Bash",
+      "WebSearch",
+      "WebFetch",
+      "Task"
     ],
     "deny": [
       "Write(/etc/**)",
