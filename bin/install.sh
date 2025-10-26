@@ -214,9 +214,11 @@ configure_git_remote() {
 create_structure() {
     echo -e "${INFO}Creating .claude/ directory structure..."
 
-    mkdir -p "$CLAUDE_DIR"/{agents,scripts,hooks,coordination,triggers/processed,spikes,scratchpads,breakdowns,research,qa,lib}
-    mkdir -p "$CLAUDE_DIR/agents/agent-learnings"/{orchestrator,senior-engineer,junior-engineer,qa-engineer,tpm}
-    mkdir -p "$CLAUDE_DIR/agents/scratchpads"/{orchestrator,senior-engineer,junior-engineer,qa-engineer,tpm}
+    # Source shared library
+    source "$TEMPLATE_DIR/lib/starforge-common.sh"
+
+    # Create directory structure
+    ensure_directory_structure "$CLAUDE_DIR"
 
     echo -e "${CHECK} Created directory structure"
 }
@@ -238,8 +240,8 @@ copy_agent_files() {
 
     # Copy lib files
     echo -e "${INFO}Installing library files..."
-    cp "$TEMPLATE_DIR/lib/project-env.sh" "$CLAUDE_DIR/lib/"
-    chmod +x "$CLAUDE_DIR/lib/project-env.sh"
+    cp "$TEMPLATE_DIR/lib"/*.sh "$CLAUDE_DIR/lib/"
+    chmod +x "$CLAUDE_DIR/lib"/*.sh
     echo -e "${CHECK} Library installed"
 
     # Copy protocol files
@@ -255,39 +257,9 @@ copy_agent_files() {
         echo -e "${INFO}Added .env.example (configure for Discord notifications)"
     fi
 
-    # Create empty learning files
-    for agent in orchestrator senior-engineer junior-engineer qa-engineer tpm; do
-        cat > "$CLAUDE_DIR/agents/agent-learnings/$agent/learnings.md" << 'EOF'
-# Agent Learnings
-
-Project-specific learnings and patterns for this agent.
-
----
-
-## Template for New Learnings
-
-```markdown
-## Learning N: [Title]
-
-**Date:** YYYY-MM-DD
-
-**What happened:**
-[Description of situation]
-
-**What was learned:**
-[Key insight or pattern discovered]
-
-**Why it matters:**
-[Impact and importance]
-
-**Corrected approach:**
-[How to do it right]
-
-**Related documentation:**
-[Links to relevant agent files or protocols]
-```
-EOF
-    done
+    # Initialize agent learnings (uses shared library)
+    source "$TEMPLATE_DIR/lib/starforge-common.sh"
+    initialize_agent_learnings "$CLAUDE_DIR" "$STARFORGE_ROOT"
 
     echo -e "${CHECK} Installed agent definitions:${NC}"
     echo -e "   - orchestrator, senior-engineer, junior-engineer"
@@ -415,6 +387,10 @@ main() {
 
     create_structure
     copy_agent_files
+
+    # Validate directory structure (uses shared library)
+    source "$TEMPLATE_DIR/lib/starforge-common.sh"
+    validate_directory_structure "$CLAUDE_DIR"
 
     if [ "$HAS_GIT" = true ]; then
         configure_worktrees
