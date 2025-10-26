@@ -1,8 +1,8 @@
 #!/bin/bash
 # MCP File Tools - File Operations Implementation
-# Part of StarForge MCP Integration (Issues #175, #176, #177)
+# Part of StarForge MCP Integration (Issues #175, #176, #177, #178)
 #
-# Provides file reading, writing, and search capabilities via MCP protocol
+# Provides file reading, writing, search, and content grep capabilities via MCP protocol
 
 # starforge_read_file - Read file contents and return via MCP
 #
@@ -230,7 +230,106 @@ starforge_write_file() {
   return 0
 }
 
+# starforge_grep_content - Search file contents for pattern
+#
+# Searches directory recursively for content matching a regex pattern.
+# Uses ripgrep (rg) with JSON output for efficient searching.
+#
+# Args:
+#   $1 - Search pattern (regex)
+#   $2 - Directory path to search (optional, defaults to current directory)
+#   $3 - File type filter (optional, e.g., "py", "js", "sh")
+#   $4 - Case insensitive flag (optional, "true" or "false", defaults to false)
+#
+# Returns:
+#   JSON object with either:
+#   - {"matches": [{"file": "path", "line_number": N, "content": "line"}]} on success
+#   - {"error": "error message"} on failure
+#
+# Examples:
+#   starforge_grep_content "function.*test" "/path/to/project"
+#   # => {"matches": [{"file": "/path/to/project/test.py", "line_number": 5, "content": "function test_something():"}]}
+#
+#   starforge_grep_content "error" "/path" "py" true
+#   # => {"matches": [...]} (case-insensitive search in .py files)
+#
+#   starforge_grep_content "" "/path"
+#   # => {"error": "Pattern is required"}
+#
+starforge_grep_content() {
+  local pattern="$1"
+  local search_path="${2:-.}"  # Default to current directory
+  local file_type="$3"
+  local case_insensitive="${4:-false}"
+
+  # Validate input
+  if [ -z "$pattern" ]; then
+    echo '{"error": "Pattern is required"}'
+    return 1
+  fi
+
+  # Check if directory exists
+  if [ ! -d "$search_path" ]; then
+    echo "{\"error\": \"Directory does not exist: $search_path\"}"
+    return 1
+  fi
+
+  # Check if directory is readable
+  if [ ! -r "$search_path" ]; then
+    echo "{\"error\": \"Directory is not readable: $search_path\"}"
+    return 1
+  fi
+
+  # Build ripgrep command
+  local rg_cmd="rg"
+  local rg_args=()
+
+  # Enable JSON output
+  rg_args+=("--json")
+
+  # Add case-insensitive flag if requested
+  if [ "$case_insensitive" = "true" ]; then
+    rg_args+=("-i")
+  fi
+
+  # Add file type filter if specified
+  if [ -n "$file_type" ]; then
+    rg_args+=("-t" "$file_type")
+  fi
+
+  # Add pattern and search path
+  rg_args+=("$pattern" "$search_path")
+
+  # Execute ripgrep and parse JSON output
+  # rg --json outputs one JSON object per line, we need to collect "match" type entries
+  local matches_json="[]"
+  local rg_output
+
+  # Run ripgrep and capture output
+  if rg_output=$("$rg_cmd" "${rg_args[@]}" 2>/dev/null); then
+    # Parse JSON lines and extract match entries
+    # Each line is a JSON object with "type" field
+    # We want lines where type="match"
+    matches_json=$(echo "$rg_output" | \
+      jq -c 'select(.type == "match") | {
+        file: .data.path.text,
+        line_number: .data.line_number,
+        content: .data.lines.text
+      }' | \
+      jq -s '.')
+  else
+    # No matches found or error - return empty matches array
+    # rg returns exit code 1 for no matches, which is normal
+    matches_json="[]"
+  fi
+
+  # Return JSON response
+  echo "{\"matches\": $matches_json}"
+  return 0
+}
+
 # Export functions for use in other scripts
 export -f starforge_read_file
 export -f starforge_search_files
 export -f starforge_write_file
+export -f starforge_grep_content
