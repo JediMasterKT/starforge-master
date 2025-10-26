@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # MCP Server - JSON-RPC 2.0 Protocol Handler
 # Implements Model Context Protocol server over stdin/stdout
 # Spec: https://spec.modelcontextprotocol.io/
@@ -11,6 +11,90 @@ readonly ERR_INVALID_REQUEST=-32600
 readonly ERR_METHOD_NOT_FOUND=-32601
 readonly ERR_INVALID_PARAMS=-32602
 readonly ERR_INTERNAL_ERROR=-32603
+
+# Tool Registry - Associative array mapping tool names to handler functions
+# Requires Bash 4.0+ for associative arrays
+declare -A TOOL_HANDLERS
+
+# Check Bash version for associative array support
+# Returns: 0 if Bash >= 4.0, 1 otherwise
+check_bash_version() {
+    local bash_major="${BASH_VERSINFO[0]}"
+    if [ "$bash_major" -lt 4 ]; then
+        echo "ERROR: Bash 4.0+ required for associative arrays (current: $BASH_VERSION)" >&2
+        return 1
+    fi
+    return 0
+}
+
+# Register a tool with its handler function
+# Args:
+#   $1 - tool_name: Name of the tool (e.g., "read_file")
+#   $2 - handler_function: Name of function to handle this tool
+#
+# Example:
+#   register_tool "starforge_read_file" "handle_read_file"
+register_tool() {
+    local tool_name="$1"
+    local handler_function="$2"
+
+    # Validate inputs
+    if [ -z "$tool_name" ] || [ -z "$handler_function" ]; then
+        echo "ERROR: register_tool requires tool_name and handler_function" >&2
+        return 1
+    fi
+
+    # Validate handler function exists
+    if ! type "$handler_function" &>/dev/null; then
+        echo "ERROR: Handler function '$handler_function' not found" >&2
+        return 1
+    fi
+
+    # Warn on overwrite
+    if [ -n "${TOOL_HANDLERS[$tool_name]:-}" ]; then
+        echo "WARNING: Overwriting handler for '$tool_name' (was: ${TOOL_HANDLERS[$tool_name]}, now: $handler_function)" >&2
+    fi
+
+    # Register in associative array
+    TOOL_HANDLERS["$tool_name"]="$handler_function"
+}
+
+# Dispatch tool call to registered handler
+# Args:
+#   $1 - tool_name: Name of the tool to call
+#   $2 - params_json: JSON parameters for the tool
+#
+# Returns:
+#   JSON response from handler, or error if tool not found
+#
+# Example:
+#   dispatch_tool "starforge_read_file" '{"path": "/tmp/file.txt"}'
+dispatch_tool() {
+    local tool_name="$1"
+    local params_json="$2"
+
+    # Check if tool is registered
+    if [ -z "${TOOL_HANDLERS[$tool_name]:-}" ]; then
+        # Tool not found - return JSON-RPC error
+        jq -nc \
+            --arg code "$ERR_METHOD_NOT_FOUND" \
+            --arg message "Unknown tool: $tool_name" \
+            '{
+                error: {
+                    code: ($code | tonumber),
+                    message: $message
+                }
+            }'
+        return 0
+    fi
+
+    # Get handler function name
+    local handler="${TOOL_HANDLERS[$tool_name]}"
+
+    # Call handler function with parameters
+    # Handler should return JSON result
+    "$handler" "$params_json"
+}
 
 # Parse JSON-RPC request
 # Input: JSON string
