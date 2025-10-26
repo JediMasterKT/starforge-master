@@ -3,7 +3,7 @@
 # These tools are called by the MCP server to access StarForge context
 
 # Get PROJECT_ROOT if not set (worktree-aware)
-if [ -z "$PROJECT_ROOT" ]; then
+if [ -z "${PROJECT_ROOT:-}" ]; then
   # Check if we're in a worktree
   if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
     PROJECT_ROOT=$(git rev-parse --show-toplevel)
@@ -11,8 +11,8 @@ if [ -z "$PROJECT_ROOT" ]; then
 fi
 
 # Get STARFORGE_CLAUDE_DIR if not set
-if [ -z "$STARFORGE_CLAUDE_DIR" ]; then
-  STARFORGE_CLAUDE_DIR="$PROJECT_ROOT/.claude"
+if [ -z "${STARFORGE_CLAUDE_DIR:-}" ]; then
+  STARFORGE_CLAUDE_DIR="${PROJECT_ROOT:-}/.claude"
 fi
 
 # ============================================================================

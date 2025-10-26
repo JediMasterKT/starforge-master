@@ -5,6 +5,56 @@
 
 set -euo pipefail
 
+# ============================================================================
+# INITIALIZATION & LIFECYCLE MANAGEMENT
+# ============================================================================
+
+# Check Bash version (require 4.0+)
+check_bash_version() {
+    local bash_major="${BASH_VERSION%%.*}"
+    if [ "$bash_major" -lt 4 ]; then
+        echo "ERROR: Bash 4.0+ required (found $BASH_VERSION)" >&2
+        exit 1
+    fi
+}
+
+# Graceful shutdown handler
+shutdown_handler() {
+    # Log shutdown if daemon.log exists
+    if [ -n "${STARFORGE_CLAUDE_DIR:-}" ] && [ -d "${STARFORGE_CLAUDE_DIR}" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [MCP] Server shutting down gracefully" >> "${STARFORGE_CLAUDE_DIR}/daemon.log" 2>/dev/null || true
+    fi
+    exit 0
+}
+
+# Setup signal handlers for graceful shutdown
+setup_signal_handlers() {
+    trap shutdown_handler SIGTERM SIGINT
+}
+
+# Load tool modules from templates/lib/
+load_tool_modules() {
+    # Determine script directory
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local lib_dir="$script_dir/../lib"
+
+    # Load all MCP tool modules
+    for module in "$lib_dir"/mcp-tools-*.sh; do
+        if [ -f "$module" ]; then
+            source "$module"
+        fi
+    done
+}
+
+# Log server startup
+log_startup() {
+    # Only log if STARFORGE_CLAUDE_DIR is set and daemon.log exists
+    if [ -n "${STARFORGE_CLAUDE_DIR:-}" ] && [ -d "${STARFORGE_CLAUDE_DIR}" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [MCP] Server started (PID: $$)" >> "${STARFORGE_CLAUDE_DIR}/daemon.log" 2>/dev/null || true
+    fi
+}
+
 # JSON-RPC 2.0 error codes
 readonly ERR_PARSE_ERROR=-32700
 readonly ERR_INVALID_REQUEST=-32600
@@ -314,9 +364,16 @@ handle_initialize() {
 # Main server loop
 # Reads JSON-RPC requests from stdin, writes responses to stdout
 main() {
+    # Startup sequence
+    check_bash_version
+    setup_signal_handlers
+    load_tool_modules
+    log_startup
+
     # Line-buffered mode for real-time I/O
     stty -icanon 2>/dev/null || true
 
+    # Event loop - process stdin requests
     while IFS= read -r line; do
         # Skip empty lines
         [ -z "$line" ] && continue
