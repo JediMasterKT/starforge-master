@@ -66,16 +66,31 @@ readonly ERR_INTERNAL_ERROR=-32603
 # Requires Bash 4.0+ for associative arrays
 declare -A TOOL_HANDLERS
 
-# Register a tool with its handler function
+# Tool Annotations - Metadata hints for agent decision-making
+# Maps tool_name to annotation properties (readOnly, destructive, idempotent)
+declare -A TOOL_ANNOTATIONS
+
+# Register a tool with its handler function and annotation metadata
 # Args:
 #   $1 - tool_name: Name of the tool (e.g., "read_file")
 #   $2 - handler_function: Name of function to handle this tool
+#   $3 - read_only: (optional) Tool doesn't modify state (default: false)
+#   $4 - destructive: (optional) Tool makes irreversible changes (default: false)
+#   $5 - idempotent: (optional) Safe to call multiple times (default: true)
+#
+# Annotation meanings:
+#   - readOnlyHint: Tool doesn't modify state (safe to retry)
+#   - destructiveHint: Tool makes irreversible changes (use caution)
+#   - idempotentHint: Safe to call multiple times with same params
 #
 # Example:
-#   register_tool "starforge_read_file" "handle_read_file"
+#   register_tool "starforge_read_file" "handle_read_file" true false true
 register_tool() {
     local tool_name="$1"
     local handler_function="$2"
+    local read_only="${3:-false}"
+    local destructive="${4:-false}"
+    local idempotent="${5:-true}"
 
     # Validate inputs
     if [ -z "$tool_name" ] || [ -z "$handler_function" ]; then
@@ -96,6 +111,11 @@ register_tool() {
 
     # Register in associative array
     TOOL_HANDLERS["$tool_name"]="$handler_function"
+
+    # Store annotation metadata
+    TOOL_ANNOTATIONS["${tool_name}_read_only"]="$read_only"
+    TOOL_ANNOTATIONS["${tool_name}_destructive"]="$destructive"
+    TOOL_ANNOTATIONS["${tool_name}_idempotent"]="$idempotent"
 }
 
 # Dispatch tool call to registered handler
@@ -321,14 +341,50 @@ handle_tools_call() {
     build_success_response "$request_id" '{"content":[{"type":"text","text":"stub"}]}'
 }
 
-# Handle tools/list method (stub for now - will be implemented in later tickets)
+# Handle tools/list method - returns list of available tools with annotations
 handle_tools_list() {
     local request="$1"
     local request_id
     request_id=$(echo "$request" | jq -r '.id')
 
-    # Stub response - real implementation in later tickets
-    build_success_response "$request_id" '{"tools":[]}'
+    # Build tools array with annotations
+    local tools_json="["
+    local first=true
+
+    for tool_name in "${!TOOL_HANDLERS[@]}"; do
+        # Add comma separator for all but first item
+        if [ "$first" = true ]; then
+            first=false
+        else
+            tools_json+=","
+        fi
+
+        # Get annotation values (with defaults if not set)
+        local read_only="${TOOL_ANNOTATIONS[${tool_name}_read_only]:-false}"
+        local destructive="${TOOL_ANNOTATIONS[${tool_name}_destructive]:-false}"
+        local idempotent="${TOOL_ANNOTATIONS[${tool_name}_idempotent]:-true}"
+
+        # Build tool object with annotations
+        tools_json+=$(jq -nc \
+            --arg name "$tool_name" \
+            --argjson readOnly "$read_only" \
+            --argjson destructive "$destructive" \
+            --argjson idempotent "$idempotent" \
+            '{
+                name: $name,
+                readOnlyHint: $readOnly,
+                destructiveHint: $destructive,
+                idempotentHint: $idempotent
+            }')
+    done
+
+    tools_json+="]"
+
+    # Build result object
+    local result
+    result=$(jq -nc --argjson tools "$tools_json" '{tools: $tools}')
+
+    build_success_response "$request_id" "$result"
 }
 
 # Handle initialize method (stub for now - will be implemented in later tickets)
