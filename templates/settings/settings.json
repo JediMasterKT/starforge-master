@@ -11,7 +11,8 @@
       "Bash",
       "WebSearch",
       "WebFetch",
-      "Task"
+      "Task",
+      "Explore"
     ],
     "deny": [
       "Write(/etc/**)",
