@@ -524,8 +524,9 @@ gh pr create \
   --title "feat: Implement #${TICKET}" \
   --body "$PR_BODY"
 
-# Get PR number
+# Get PR number and URL
 PR_NUMBER=$(gh pr view --json number -q .number)
+PR_URL=$(gh pr view --json url -q .url)
 
 # Note: Could use get_pr_details() helper, but simple gh command is clearer here
 
@@ -536,9 +537,10 @@ PR_URL=$(gh pr view $PR_NUMBER --json url -q .url)
 gh pr edit $PR_NUMBER --add-label "needs-review"
 echo "✅ Added 'needs-review' label to PR #$PR_NUMBER"
 
-# Send Discord notification for PR created (notify user on mobile)
+# Notify user via Discord (mobile notification)
+source "${STARFORGE_CLAUDE_DIR}/lib/router.sh"
 notify_pr_created "$PR_NUMBER" "$PR_URL" "$TICKET" "$AGENT_ID"
-echo "✅ Discord notification sent for PR #$PR_NUMBER"
+echo "✅ Discord notification sent to user"
 
 # Update status
 jq --arg pr "$PR_NUMBER" \

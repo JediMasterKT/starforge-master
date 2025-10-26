@@ -334,8 +334,8 @@ ${feedback}
 #
 # Args:
 #   pr_number: PR number (e.g., "167")
-#   pr_url: PR URL (e.g., "https://github.com/user/repo/pull/167")
-#   ticket: Ticket number (e.g., "42" or "#42")
+#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
+#   ticket: Ticket number (e.g., "42")
 #   agent: Agent name (e.g., "junior-dev-a")
 #
 # Example:
@@ -347,36 +347,36 @@ notify_pr_created() {
     local ticket=$3
     local agent=$4
 
-    # Skip notification if Discord not available
-    if [ -z "$(type -t send_discord_daemon_notification 2>/dev/null)" ]; then
+    # Skip notification if send_discord_daemon_notification not available
+    if ! type send_discord_daemon_notification &>/dev/null; then
         return 0
     fi
 
-    # Add # prefix to ticket if not present
-    if [[ "$ticket" != \#* ]] && [ -n "$ticket" ]; then
-        ticket="#${ticket}"
+    # Skip notification if PR number empty (log warning)
+    if [ -z "$pr_number" ]; then
+        log_warn "router" "notify_pr_created: Empty PR number, skipping notification"
+        return 0
     fi
 
+    # Build title
+    local title="📋 PR Ready for Review"
+
     # Build description with clickable PR link
-    local description="PR ready for review
+    local description="**${agent}** opened [PR #${pr_number}](${pr_url})"
 
-**PR:** [#${pr_number}](${pr_url})
-**Ticket:** ${ticket}
+    # Use COLOR_INFO (blue) - defined in discord-notify.sh
+    local color="${COLOR_INFO:-3447003}"
 
-Click link above to review the PR"
+    # Build fields JSON array with Ticket and PR
+    local fields="[{\"name\":\"Ticket\",\"value\":\"#${ticket}\",\"inline\":true},{\"name\":\"PR\",\"value\":\"#${pr_number}\",\"inline\":true}]"
 
-    # Build fields JSON (PR number and ticket)
-    local fields="[{\"name\":\"PR\",\"value\":\"#${pr_number}\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"${ticket}\",\"inline\":true}]"
-
-    # Send notification with INFO color (blue)
+    # Send notification via discord-notify.sh
     send_discord_daemon_notification \
         "$agent" \
-        "📋 PR Ready for Review" \
+        "$title" \
         "$description" \
-        "$COLOR_INFO" \
+        "$color" \
         "$fields"
-
-    log_info "router" "PR created notification sent for PR #$pr_number (agent: $agent, ticket: $ticket)"
 }
 
 # Export functions for use in other scripts
@@ -474,69 +474,3 @@ ${error_message}
 
 # Export function for use in other scripts
 export -f notify_tests_failed
-
-# Source discord-notify.sh for notification functions if available
-if [ -z "$(type -t send_discord_daemon_notification 2>/dev/null)" ]; then
-    if [ -f "$(dirname "${BASH_SOURCE[0]}")/discord-notify.sh" ]; then
-        source "$(dirname "${BASH_SOURCE[0]}")/discord-notify.sh"
-    elif [ -f ".claude/lib/discord-notify.sh" ]; then
-        source .claude/lib/discord-notify.sh
-    elif [ -f "templates/lib/discord-notify.sh" ]; then
-        source templates/lib/discord-notify.sh
-    fi
-fi
-
-#
-# notify_pr_created <pr_number> <pr_url> <ticket> <agent>
-#
-# Sends Discord notification when PR is created and ready for review.
-#
-# Args:
-#   pr_number: PR number (e.g., "167")
-#   pr_url: PR URL (e.g., "https://github.com/user/repo/pull/167")
-#   ticket: Ticket number (e.g., "42" or "#42")
-#   agent: Agent name (e.g., "junior-dev-a")
-#
-# Example:
-#   notify_pr_created "167" "https://github.com/user/repo/pull/167" "42" "junior-dev-a"
-#
-notify_pr_created() {
-    local pr_number=$1
-    local pr_url=$2
-    local ticket=$3
-    local agent=$4
-
-    # Skip notification if Discord not available
-    if [ -z "$(type -t send_discord_daemon_notification 2>/dev/null)" ]; then
-        return 0
-    fi
-
-    # Add # prefix to ticket if not present
-    if [[ "$ticket" != \#* ]] && [ -n "$ticket" ]; then
-        ticket="#${ticket}"
-    fi
-
-    # Build description with clickable PR link
-    local description="PR ready for review
-
-**PR:** [#${pr_number}](${pr_url})
-**Ticket:** ${ticket}
-
-Click link above to review the PR"
-
-    # Build fields JSON (PR number and ticket)
-    local fields="[{\"name\":\"PR\",\"value\":\"#${pr_number}\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"${ticket}\",\"inline\":true}]"
-
-    # Send notification with INFO color (blue)
-    send_discord_daemon_notification \
-        "$agent" \
-        "📋 PR Ready for Review" \
-        "$description" \
-        "$COLOR_INFO" \
-        "$fields"
-
-    log_info "router" "PR created notification sent for PR #$pr_number (agent: $agent, ticket: $ticket)"
-}
-
-# Export function for use in other scripts
-export -f notify_pr_created

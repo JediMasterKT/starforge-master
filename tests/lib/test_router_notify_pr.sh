@@ -1,217 +1,219 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# Unit tests for notify_pr_created function in router.sh
 #
-# test_router_notify_pr.sh - Unit tests for notify_pr_created in router.sh
+# Tests verify that the function correctly wraps Discord notification
+# and sends appropriate embed with PR details.
 #
 
-# Don't use set -e so we can run all tests even if some fail
+set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Test utilities
+TESTS_RUN=0
+TESTS_PASSED=0
+TESTS_FAILED=0
 
-# Track test results
-PASSED=0
-FAILED=0
+assert_equals() {
+  local actual="$1"
+  local expected="$2"
+  local message="$3"
 
-echo "========================================"
-echo "Router notify_pr_created Unit Tests"
-echo "========================================"
+  TESTS_RUN=$((TESTS_RUN + 1))
 
-# Mock color constants
-COLOR_INFO=3447003
-
-# Mock log functions
-log_info() { return 0; }
-log_error() { return 0; }
-log_warn() { return 0; }
-export -f log_info
-export -f log_error
-export -f log_warn
-
-# Mock Discord notify library (prevent actual notifications)
-send_discord_daemon_notification() {
-  # Capture arguments for verification
-  echo "MOCK_CALL:$1|$2|$3|$4|$5" >> /tmp/test-router-discord-calls.txt
-  return 0
+  if [ "$actual" = "$expected" ]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "  ✅ PASS: $message"
+    return 0
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  ❌ FAIL: $message"
+    echo "     Expected: '$expected'"
+    echo "     Got: '$actual'"
+    return 1
+  fi
 }
-export -f send_discord_daemon_notification
 
-# Source the router library
-source "$SCRIPT_DIR/../../templates/lib/router.sh"
+assert_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local message="$3"
 
-# Test 1: notify_pr_created function exists
-echo ""
-echo "Test 1: notify_pr_created function exists"
-if type notify_pr_created > /dev/null 2>&1; then
-  echo "✅ PASS"
-  ((PASSED++))
-else
-  echo "❌ FAIL: notify_pr_created not found"
-  ((FAILED++))
-fi
+  TESTS_RUN=$((TESTS_RUN + 1))
 
-# Test 2: notify_pr_created accepts correct parameters
-echo ""
-echo "Test 2: notify_pr_created calls Discord with correct structure"
-rm -f /tmp/test-router-discord-calls.txt
-
-notify_pr_created "167" "https://github.com/user/repo/pull/167" "42" "junior-dev-a"
-
-if [ -f /tmp/test-router-discord-calls.txt ]; then
-  CAPTURED=$(cat /tmp/test-router-discord-calls.txt)
-
-  # Verify agent name
-  if echo "$CAPTURED" | grep -q "junior-dev-a"; then
-    echo "✅ PASS: Agent name included"
-    ((PASSED++))
+  if echo "$haystack" | grep -q "$needle"; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "  ✅ PASS: $message"
+    return 0
   else
-    echo "❌ FAIL: Agent name missing from Discord call"
-    echo "   Got: $CAPTURED"
-    ((FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  ❌ FAIL: $message"
+    echo "     Expected to find: '$needle'"
+    echo "     In: '$haystack'"
+    return 1
   fi
-else
-  echo "❌ FAIL: Discord notification not called"
-  ((FAILED++))
-fi
+}
 
-# Test 3: notify_pr_created includes PR number in fields
-echo ""
-echo "Test 3: notify_pr_created includes PR number"
-rm -f /tmp/test-router-discord-calls.txt
+# Test 1: Function exists and is callable
+test_notify_pr_created_exists() {
+  echo ""
+  echo "Test 1: Function exists and is callable"
 
-notify_pr_created "200" "https://github.com/test/repo/pull/200" "99" "test-agent"
+  # Source router.sh
+  source templates/lib/router.sh
 
-if [ -f /tmp/test-router-discord-calls.txt ]; then
-  CAPTURED=$(cat /tmp/test-router-discord-calls.txt)
-
-  # Verify PR number in fields (5th parameter)
-  if echo "$CAPTURED" | grep -q "200"; then
-    echo "✅ PASS: PR number included"
-    ((PASSED++))
+  # Check if function exists
+  if type notify_pr_created &>/dev/null; then
+    TESTS_RUN=$((TESTS_RUN + 1))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "  ✅ PASS: notify_pr_created function exists"
+    return 0
   else
-    echo "❌ FAIL: PR number missing"
-    echo "   Got: $CAPTURED"
-    ((FAILED++))
+    TESTS_RUN=$((TESTS_RUN + 1))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  ❌ FAIL: notify_pr_created function does not exist"
+    return 1
   fi
-else
-  echo "❌ FAIL: Discord notification not called"
-  ((FAILED++))
-fi
+}
 
-# Test 4: notify_pr_created includes ticket number in fields
-echo ""
-echo "Test 4: notify_pr_created includes ticket number"
-rm -f /tmp/test-router-discord-calls.txt
+# Test 2: Function builds correct embed structure
+test_notify_pr_created_embed() {
+  echo ""
+  echo "Test 2: Function builds correct embed structure"
 
-notify_pr_created "150" "https://github.com/test/repo/pull/150" "42" "junior-dev-b"
+  # Mock send_discord_daemon_notification to capture args
+  send_discord_daemon_notification() {
+    # Save all args delimited by |
+    echo "$1|$2|$3|$4|$5" > /tmp/test-notification-$$.txt
+  }
+  export -f send_discord_daemon_notification
 
-if [ -f /tmp/test-router-discord-calls.txt ]; then
-  CAPTURED=$(cat /tmp/test-router-discord-calls.txt)
+  # Source router.sh AFTER mocking
+  source templates/lib/router.sh
 
-  # Verify ticket number
-  if echo "$CAPTURED" | grep -q "#42"; then
-    echo "✅ PASS: Ticket number included"
-    ((PASSED++))
-  else
-    echo "❌ FAIL: Ticket number missing"
-    echo "   Got: $CAPTURED"
-    ((FAILED++))
+  # Call function
+  notify_pr_created "167" "https://github.com/user/repo/pull/167" "42" "junior-dev-a"
+
+  # Verify arguments
+  local captured=$(cat /tmp/test-notification-$$.txt 2>/dev/null || echo "")
+
+  if [ -z "$captured" ]; then
+    TESTS_RUN=$((TESTS_RUN + 1))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  ❌ FAIL: send_discord_daemon_notification was not called"
+    return 1
   fi
-else
-  echo "❌ FAIL: Discord notification not called"
-  ((FAILED++))
-fi
 
-# Test 5: notify_pr_created uses INFO color (blue)
-echo ""
-echo "Test 5: notify_pr_created uses INFO color"
-rm -f /tmp/test-router-discord-calls.txt
+  # Check agent name (arg 1)
+  assert_contains "$captured" "junior-dev-a" "Should include agent name"
 
-notify_pr_created "100" "https://github.com/test/repo/pull/100" "10" "qa-engineer"
+  # Check title (arg 2)
+  assert_contains "$captured" "PR Ready for Review" "Should have correct title"
+  assert_contains "$captured" "📋" "Title should include emoji"
 
-if [ -f /tmp/test-router-discord-calls.txt ]; then
-  CAPTURED=$(cat /tmp/test-router-discord-calls.txt)
+  # Check description (arg 3)
+  assert_contains "$captured" "\*\*junior-dev-a\*\*" "Description should bold agent name"
+  assert_contains "$captured" "PR #167" "Description should include PR number"
+  assert_contains "$captured" "https://github.com/user/repo/pull/167" "Description should include PR URL"
 
-  # Verify COLOR_INFO (3447003 - 4th parameter)
-  if echo "$CAPTURED" | grep -q "3447003"; then
-    echo "✅ PASS: Uses COLOR_INFO (blue)"
-    ((PASSED++))
-  else
-    echo "❌ FAIL: Wrong color code"
-    echo "   Got: $CAPTURED"
-    ((FAILED++))
-  fi
-else
-  echo "❌ FAIL: Discord notification not called"
-  ((FAILED++))
-fi
+  # Check color (arg 4) - should be COLOR_INFO (3447003)
+  assert_contains "$captured" "3447003" "Should use COLOR_INFO (blue)"
 
-# Test 6: notify_pr_created handles empty parameters gracefully
-echo ""
-echo "Test 6: notify_pr_created handles empty parameters"
-rm -f /tmp/test-router-discord-calls.txt
+  # Check fields (arg 5) - should include ticket and PR
+  assert_contains "$captured" "Ticket" "Fields should include Ticket"
+  assert_contains "$captured" "#42" "Fields should include ticket number"
+  assert_contains "$captured" "PR" "Fields should include PR field"
+  assert_contains "$captured" "#167" "Fields should include PR number"
 
-# Should not crash with empty params
-if notify_pr_created "" "" "" "" > /dev/null 2>&1; then
-  echo "✅ PASS: Handles empty params gracefully"
-  ((PASSED++))
-else
-  echo "❌ FAIL: Crashes with empty params (exit code: $?)"
-  ((FAILED++))
-fi
+  # Cleanup
+  rm -f /tmp/test-notification-$$.txt
+}
 
-# Test 7: notify_pr_created includes correct title
-echo ""
-echo "Test 7: notify_pr_created uses correct title"
-rm -f /tmp/test-router-discord-calls.txt
+# Test 3: Function handles missing parameters gracefully
+test_notify_pr_created_missing_params() {
+  echo ""
+  echo "Test 3: Function handles missing parameters gracefully"
 
-notify_pr_created "250" "https://github.com/test/repo/pull/250" "88" "orchestrator"
+  # Mock send_discord_daemon_notification
+  send_discord_daemon_notification() {
+    echo "$1|$2|$3|$4|$5" > /tmp/test-notification-$$.txt
+  }
+  export -f send_discord_daemon_notification
 
-if [ -f /tmp/test-router-discord-calls.txt ]; then
-  CAPTURED=$(cat /tmp/test-router-discord-calls.txt)
+  source templates/lib/router.sh
 
-  # Verify title (2nd parameter)
-  if echo "$CAPTURED" | grep -q "PR Ready for Review"; then
-    echo "✅ PASS: Title is 'PR Ready for Review'"
-    ((PASSED++))
-  else
-    echo "❌ FAIL: Wrong title"
-    echo "   Got: $CAPTURED"
-    ((FAILED++))
-  fi
-else
-  echo "❌ FAIL: Discord notification not called"
-  ((FAILED++))
-fi
+  # Call with empty params - should not crash
+  notify_pr_created "" "" "" ""
+  local exit_code=$?
 
-# Test 8: notify_pr_created includes clickable PR link in description
-echo ""
-echo "Test 8: notify_pr_created includes PR URL"
-rm -f /tmp/test-router-discord-calls.txt
+  assert_equals "$exit_code" "0" "Should handle empty params gracefully (exit 0)"
 
-notify_pr_created "175" "https://github.com/example/test/pull/175" "55" "junior-dev-c"
+  # Cleanup
+  rm -f /tmp/test-notification-$$.txt
+}
 
-if [ -f /tmp/test-router-discord-calls.txt ]; then
-  CAPTURED=$(cat /tmp/test-router-discord-calls.txt)
+# Test 4: Function uses correct parameters
+test_notify_pr_created_parameters() {
+  echo ""
+  echo "Test 4: Function uses correct parameters in order"
 
-  # Verify PR URL in description (3rd parameter)
-  if echo "$CAPTURED" | grep -q "https://github.com/example/test/pull/175"; then
-    echo "✅ PASS: PR URL included in description"
-    ((PASSED++))
-  else
-    echo "❌ FAIL: PR URL missing"
-    echo "   Got: $CAPTURED"
-    ((FAILED++))
-  fi
-else
-  echo "❌ FAIL: Discord notification not called"
-  ((FAILED++))
-fi
+  # Mock to capture exact order
+  send_discord_daemon_notification() {
+    local agent=$1
+    local title=$2
+    local description=$3
+    local color=$4
+    local fields=$5
 
-# Clean up
-rm -f /tmp/test-router-discord-calls.txt
+    echo "AGENT:$agent" > /tmp/test-params-$$.txt
+    echo "TITLE:$title" >> /tmp/test-params-$$.txt
+    echo "DESC:$description" >> /tmp/test-params-$$.txt
+    echo "COLOR:$color" >> /tmp/test-params-$$.txt
+    echo "FIELDS:$fields" >> /tmp/test-params-$$.txt
+  }
+  export -f send_discord_daemon_notification
 
-echo ""
+  source templates/lib/router.sh
+
+  # Call with test values
+  notify_pr_created "200" "https://github.com/test/repo/pull/200" "99" "junior-dev-b"
+
+  local output=$(cat /tmp/test-params-$$.txt 2>/dev/null || echo "")
+
+  # Verify parameter order
+  assert_contains "$output" "AGENT:junior-dev-b" "Agent should be first parameter"
+  assert_contains "$output" "TITLE:📋 PR Ready for Review" "Title should be second parameter"
+  assert_contains "$output" "DESC:" "Description should be third parameter"
+  assert_contains "$output" "junior-dev-b" "Description should mention agent"
+  assert_contains "$output" "PR #200" "Description should mention PR number"
+  assert_contains "$output" "COLOR:3447003" "Color should be fourth parameter (COLOR_INFO)"
+  assert_contains "$output" "FIELDS:" "Fields should be fifth parameter"
+
+  # Cleanup
+  rm -f /tmp/test-params-$$.txt
+}
+
+# Run all tests
 echo "========================================"
-echo "Results: $PASSED passed, $FAILED failed"
+echo "Testing notify_pr_created function"
 echo "========================================"
 
-[ "$FAILED" -eq 0 ] && exit 0 || exit 1
+test_notify_pr_created_exists || true
+test_notify_pr_created_embed || true
+test_notify_pr_created_missing_params || true
+test_notify_pr_created_parameters || true
+
+# Summary
+echo ""
+echo "========================================"
+echo "Test Summary"
+echo "========================================"
+echo "Tests run: $TESTS_RUN"
+echo "Passed: $TESTS_PASSED"
+echo "Failed: $TESTS_FAILED"
+echo "========================================"
+
+if [ $TESTS_FAILED -gt 0 ]; then
+  exit 1
+else
+  echo "✅ All tests passed!"
+  exit 0
+fi
