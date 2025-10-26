@@ -66,17 +66,6 @@ readonly ERR_INTERNAL_ERROR=-32603
 # Requires Bash 4.0+ for associative arrays
 declare -A TOOL_HANDLERS
 
-# Check Bash version for associative array support
-# Returns: 0 if Bash >= 4.0, 1 otherwise
-check_bash_version() {
-    local bash_major="${BASH_VERSINFO[0]}"
-    if [ "$bash_major" -lt 4 ]; then
-        echo "ERROR: Bash 4.0+ required for associative arrays (current: $BASH_VERSION)" >&2
-        return 1
-    fi
-    return 0
-}
-
 # Register a tool with its handler function
 # Args:
 #   $1 - tool_name: Name of the tool (e.g., "read_file")
