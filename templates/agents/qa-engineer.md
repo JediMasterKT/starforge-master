@@ -561,7 +561,13 @@ REPORT
   echo ""
   echo "✅ PR #$PR_NUMBER approved and orchestrator notified via trigger"
   echo ""
-  
+
+  # Send Discord notification
+  source $STARFORGE_CLAUDE_DIR/lib/router.sh
+  PR_URL=$(gh pr view $PR_NUMBER --json url -q .url)
+  notify_qa_approved "$PR_NUMBER" "$PR_URL"
+  echo "✅ Discord notification sent"
+
   # Return to main
   git checkout main
 }
@@ -625,7 +631,22 @@ ISSUES
     --body "QA found issues in PR #${PR_NUMBER}. See PR for details. Fix and resubmit."
 
   echo "❌ PR #$PR_NUMBER DECLINED"
-  
+
+  # Send Discord notification with feedback summary
+  source $STARFORGE_CLAUDE_DIR/lib/router.sh
+  PR_URL=$(gh pr view $PR_NUMBER --json url -q .url)
+
+  # Create concise feedback from issues
+  FEEDBACK="QA review failed:"
+  [ "$GATE1_STATUS" = "FAILED" ] && FEEDBACK="$FEEDBACK CI: $GATE1_REASON."
+  [ "$GATE2_STATUS" = "FAILED" ] && FEEDBACK="$FEEDBACK Tests: $GATE2_REASON."
+  [ "$GATE3_STATUS" = "FAILED" ] && FEEDBACK="$FEEDBACK UX: $GATE3_REASON."
+  [ "$GATE4_STATUS" = "FAILED" ] && FEEDBACK="$FEEDBACK Security: $GATE4_REASON."
+  [ "$GATE5_STATUS" = "FAILED" ] && FEEDBACK="$FEEDBACK Docs: $GATE5_REASON."
+
+  notify_qa_rejected "$PR_NUMBER" "$PR_URL" "$FEEDBACK"
+  echo "✅ Discord notification sent"
+
   # Return to main
   git checkout main
 }

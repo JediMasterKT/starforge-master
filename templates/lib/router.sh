@@ -225,107 +225,8 @@ notify_agent_blocked() {
 export -f notify_agent_blocked
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# QA Review Notifications
+# PR Created Notifications
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-#
-# notify_qa_approved <pr_number> <pr_url>
-#
-# Sends Discord notification when QA approves PR.
-# Uses green color (COLOR_SUCCESS).
-#
-# Args:
-#   pr_number: PR number (e.g., "167")
-#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
-#
-# Example:
-#   notify_qa_approved "167" "https://github.com/user/repo/pull/167"
-#
-notify_qa_approved() {
-    local pr_number="$1"
-    local pr_url="$2"
-
-    # Validate inputs
-    if [ -z "$pr_number" ] || [ -z "$pr_url" ]; then
-        log_warn "router" "notify_qa_approved: Missing required arguments"
-        return 1
-    fi
-
-    # Build notification description
-    local description="PR #${pr_number} approved for merge
-✅ All quality gates passed
-✅ Ready to merge
-
-👉 View PR: ${pr_url}"
-
-    # Send notification to qa-engineer channel
-    send_discord_daemon_notification \
-        "qa-engineer" \
-        "✅ QA Approved" \
-        "$description" \
-        "$COLOR_SUCCESS" \
-        '[]'
-
-    log_info "router" "Sent QA approved notification for PR #${pr_number}"
-    return 0
-}
-
-#
-# notify_qa_rejected <pr_number> <pr_url> <feedback>
-#
-# Sends Discord notification when QA requests changes on PR.
-# Uses yellow color (COLOR_WARNING).
-# Truncates feedback to 200 chars to keep notification concise.
-#
-# Args:
-#   pr_number: PR number (e.g., "167")
-#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
-#   feedback: QA feedback/issues (will be truncated to 200 chars)
-#
-# Example:
-#   notify_qa_rejected "167" "https://github.com/user/repo/pull/167" "Please add integration tests"
-#
-notify_qa_rejected() {
-    local pr_number="$1"
-    local pr_url="$2"
-    local feedback="$3"
-
-    # Validate inputs
-    if [ -z "$pr_number" ] || [ -z "$pr_url" ]; then
-        log_warn "router" "notify_qa_rejected: Missing required arguments"
-        return 1
-    fi
-
-    # Handle empty feedback
-    if [ -z "$feedback" ]; then
-        feedback="No feedback provided"
-    fi
-
-    # Truncate feedback to 200 chars
-    if [ ${#feedback} -gt 200 ]; then
-        feedback="${feedback:0:200}..."
-    fi
-
-    # Build notification description
-    local description="PR #${pr_number} needs changes
-❌ QA requested changes
-
-**Feedback:**
-${feedback}
-
-👉 View PR: ${pr_url}"
-
-    # Send notification to qa-engineer channel
-    send_discord_daemon_notification \
-        "qa-engineer" \
-        "⚠️ QA Changes Requested" \
-        "$description" \
-        "$COLOR_WARNING" \
-        '[]'
-
-    log_info "router" "Sent QA rejected notification for PR #${pr_number}"
-    return 0
-}
 
 #
 # notify_pr_created <pr_number> <pr_url> <ticket> <agent>
@@ -379,10 +280,128 @@ notify_pr_created() {
         "$fields"
 }
 
+# Export function for use in other scripts
+export -f notify_pr_created
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# QA Review Notifications
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#
+# notify_qa_approved <pr_number> <pr_url>
+#
+# Sends Discord notification when QA approves PR.
+# Uses green color (COLOR_SUCCESS).
+#
+# Args:
+#   pr_number: PR number (e.g., "167")
+#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
+#
+# Example:
+#   notify_qa_approved "167" "https://github.com/user/repo/pull/167"
+#
+notify_qa_approved() {
+    local pr_number="$1"
+    local pr_url="$2"
+
+    # Validate inputs
+    if [ -z "$pr_number" ] || [ -z "$pr_url" ]; then
+        log_error "router" "notify_qa_approved: Missing required arguments (pr_number, pr_url)"
+        return 1
+    fi
+
+    local description="**qa-engineer** approved [PR #${pr_number}](${pr_url})
+
+All quality gates passed:
+✅ CI tests passing
+✅ Integration test coverage
+✅ Security review
+✅ Documentation
+
+Ready to merge."
+
+    local fields='[
+        {"name":"PR","value":"#'"${pr_number}"'","inline":true},
+        {"name":"Status","value":"✅ Ready to merge","inline":true}
+    ]'
+
+    # Call discord notification (if function exists)
+    if type send_discord_daemon_notification > /dev/null 2>&1; then
+        send_discord_daemon_notification \
+            "qa-engineer" \
+            "✅ QA Approved" \
+            "$description" \
+            "$COLOR_SUCCESS" \
+            "$fields"
+    fi
+
+    return 0
+}
+
+#
+# notify_qa_rejected <pr_number> <pr_url> <feedback>
+#
+# Sends Discord notification when QA requests changes on PR.
+# Uses yellow color (COLOR_WARNING).
+# Truncates feedback to 200 chars to keep notification concise.
+#
+# Args:
+#   pr_number: PR number (e.g., "167")
+#   pr_url: Full PR URL (e.g., "https://github.com/user/repo/pull/167")
+#   feedback: QA feedback/issues (will be truncated to 200 chars)
+#
+# Example:
+#   notify_qa_rejected "167" "https://github.com/user/repo/pull/167" "Please add integration tests"
+#
+notify_qa_rejected() {
+    local pr_number="$1"
+    local pr_url="$2"
+    local feedback="$3"
+
+    # Validate inputs
+    if [ -z "$pr_number" ] || [ -z "$pr_url" ]; then
+        log_error "router" "notify_qa_rejected: Missing required arguments (pr_number, pr_url)"
+        return 1
+    fi
+
+    # Handle empty feedback
+    if [ -z "$feedback" ]; then
+        feedback="No feedback provided"
+    fi
+
+    # Truncate feedback to 200 chars (Discord field value limit considerations)
+    if [ ${#feedback} -gt 200 ]; then
+        feedback="${feedback:0:197}..."
+    fi
+
+    # Escape special characters in feedback for JSON
+    local feedback_escaped=$(echo "$feedback" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+
+    local description="**qa-engineer** requested changes on [PR #${pr_number}](${pr_url})
+
+Please address the feedback and resubmit."
+
+    local fields='[
+        {"name":"PR","value":"#'"${pr_number}"'","inline":true},
+        {"name":"Feedback","value":"'"${feedback_escaped}"'","inline":false}
+    ]'
+
+    # Call discord notification (if function exists)
+    if type send_discord_daemon_notification > /dev/null 2>&1; then
+        send_discord_daemon_notification \
+            "qa-engineer" \
+            "🔄 Changes Requested" \
+            "$description" \
+            "$COLOR_WARNING" \
+            "$fields"
+    fi
+
+    return 0
+}
+
 # Export functions for use in other scripts
 export -f notify_qa_approved
 export -f notify_qa_rejected
-export -f notify_pr_created
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CI Test Failure Notifications
