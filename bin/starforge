@@ -395,6 +395,14 @@ case "$COMMAND" in
             exit 0
         fi
 
+        # Source shared library for directory management functions
+        source "$STARFORGE_DIR/templates/lib/starforge-common.sh"
+
+        # Ensure complete directory structure before file operations
+        echo ""
+        ensure_directory_structure "$CLAUDE_DIR"
+        echo ""
+
         # Create backup BEFORE any file overwrites
         create_backup "$CLAUDE_DIR"
 
@@ -443,6 +451,17 @@ case "$COMMAND" in
         # Copy VERSION file to track installed version
         if [ -f "$STARFORGE_DIR/templates/VERSION" ]; then
             cp "$STARFORGE_DIR/templates/VERSION" "$CLAUDE_DIR/STARFORGE_VERSION"
+        fi
+
+        # Initialize agent learnings if missing
+        echo ""
+        initialize_agent_learnings "$CLAUDE_DIR" "$STARFORGE_DIR"
+        echo ""
+
+        # Validate installation
+        if ! validate_directory_structure "$CLAUDE_DIR"; then
+            echo -e "${RED}❌ Directory structure validation failed${NC}"
+            echo -e "${YELLOW}   Please report this issue with your .claude/ directory state${NC}"
         fi
 
         echo ""
