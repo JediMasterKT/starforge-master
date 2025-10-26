@@ -1,12 +1,30 @@
 #!/bin/bash
 # Context Reading Helpers
-# Purpose: Eliminate permission prompts from piped context reading commands
-# Workaround for: https://github.com/anthropics/claude-code/issues/5465
+# Purpose: Use MCP tools to access StarForge context files
+# Updated for MCP integration (Issue #188)
 
-# Get project context (first 15 lines)
-# Replaces: cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
-get_project_context() {
-    if [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
+# Ensure MCP tools are loaded
+if [ -z "$(type -t get_project_context 2>/dev/null)" ]; then
+    # MCP tools not loaded, load them
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$SCRIPT_DIR/../lib/mcp-tools-trigger.sh" 2>/dev/null || true
+fi
+
+# ============================================================================
+# PLAINTEXT WRAPPER FUNCTIONS
+# These call the MCP tools and extract plaintext content
+# ============================================================================
+
+# Get project context plaintext (first 15 lines)
+# Wrapper for get_project_context MCP tool
+# Returns plaintext content (not JSON)
+get_project_context_plaintext() {
+    # Try MCP tool first
+    if type -t get_project_context >/dev/null 2>&1; then
+        # Call MCP tool and extract plaintext from JSON
+        local mcp_response=$(get_project_context 2>/dev/null)
+        echo "$mcp_response" | jq -r '.content[0].text' 2>/dev/null | head -15 || cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" 2>/dev/null | head -15
+    elif [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
         cat "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -15
     else
         echo "❌ PROJECT_CONTEXT.md not found"
@@ -14,20 +32,16 @@ get_project_context() {
     fi
 }
 
-# Get building summary from project context
-# Replaces: grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1
-get_building_summary() {
-    if [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
-        grep '##.*Building' "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" | head -1
-    else
-        echo "Unknown"
-    fi
-}
-
-# Get tech stack (first 15 lines)
-# Replaces: cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -15
-get_tech_stack() {
-    if [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
+# Get tech stack plaintext (first 15 lines)
+# Wrapper for get_tech_stack MCP tool
+# Returns plaintext content (not JSON)
+get_tech_stack_plaintext() {
+    # Try MCP tool first
+    if type -t get_tech_stack >/dev/null 2>&1; then
+        # Call MCP tool and extract plaintext from JSON
+        local mcp_response=$(get_tech_stack 2>/dev/null)
+        echo "$mcp_response" | jq -r '.content[0].text' 2>/dev/null | head -15 || cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" 2>/dev/null | head -15
+    elif [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
         cat "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -15
     else
         echo "❌ TECH_STACK.md not found"
@@ -35,21 +49,35 @@ get_tech_stack() {
     fi
 }
 
+# ============================================================================
+# HELPER FUNCTIONS (use the plaintext wrappers above)
+# ============================================================================
+
+# Get building summary from project context
+# Uses grep on plaintext content
+get_building_summary() {
+    if [ -f "$STARFORGE_CLAUDE_DIR/PROJECT_CONTEXT.md" ]; then
+        get_project_context_plaintext | grep '##.*Building' | head -1
+    else
+        echo "Unknown"
+    fi
+}
+
 # Get primary technology
-# Replaces: grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1
+# Uses grep on plaintext content
 get_primary_tech() {
     if [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
-        grep 'Primary:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1
+        get_tech_stack_plaintext | grep 'Primary:' | head -1
     else
         echo "Unknown"
     fi
 }
 
 # Get test command from tech stack
-# Replaces: grep 'Command:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1 | cut -d'`' -f2
+# Uses grep on plaintext content
 get_test_command() {
     if [ -f "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" ]; then
-        grep 'Command:' "$STARFORGE_CLAUDE_DIR/TECH_STACK.md" | head -1 | cut -d'`' -f2
+        get_tech_stack_plaintext | grep 'Command:' | head -1 | cut -d'`' -f2
     else
         echo "pytest"  # Default fallback
     fi
@@ -78,7 +106,7 @@ check_context_files() {
 }
 
 # Count learning entries in learnings file
-# Replaces: grep -c "^##.*Learning" "$LEARNINGS" || echo "0"
+# Uses starforge_read_file MCP tool if available
 count_learnings() {
     local learnings_file=$1
 
@@ -92,8 +120,21 @@ count_learnings() {
         return 0  # Not an error, just no learnings yet
     fi
 
-    local count=$(grep -c "^##.*Learning" "$learnings_file" 2>/dev/null || echo "0")
+    # Try MCP tool first, fall back to direct read
+    local content=""
+    if type -t starforge_read_file >/dev/null 2>&1; then
+        # Convert absolute path to relative for MCP tool
+        local relative_path="${learnings_file#$STARFORGE_MAIN_REPO/}"
+        content=$(starforge_read_file "$relative_path" 2>/dev/null | jq -r '.content' 2>/dev/null)
+    fi
 
+    # Fallback to direct read if MCP failed
+    if [ -z "$content" ]; then
+        content=$(cat "$learnings_file" 2>/dev/null)
+    fi
+
+    # Count learning headers
+    local count=$(echo "$content" | grep -c "^##.*Learning" 2>/dev/null || echo "0")
     echo "$count"
 }
 
@@ -102,7 +143,7 @@ count_learnings() {
 # ============================================================================
 
 # Get the most recent spike directory
-# Replaces: ls -td "$STARFORGE_CLAUDE_DIR/spikes/spike-"* | head -1
+# Uses standard shell commands (no MCP needed for directory listing)
 get_latest_spike_dir() {
     if [ ! -d "$STARFORGE_CLAUDE_DIR/spikes" ]; then
         return 1
@@ -120,7 +161,7 @@ get_latest_spike_dir() {
 }
 
 # Extract feature name from breakdown file
-# Replaces: grep "^# Task Breakdown:" "$BREAKDOWN_PATH" | sed 's/# Task Breakdown: //'
+# Uses starforge_read_file MCP tool if available
 get_feature_name_from_breakdown() {
     local breakdown_file=$1
 
@@ -128,8 +169,21 @@ get_feature_name_from_breakdown() {
         return 1
     fi
 
+    # Try MCP tool first
+    local content=""
+    if type -t starforge_read_file >/dev/null 2>&1; then
+        # Convert to relative path
+        local relative_path="${breakdown_file#$STARFORGE_MAIN_REPO/}"
+        content=$(starforge_read_file "$relative_path" 2>/dev/null | jq -r '.content' 2>/dev/null)
+    fi
+
+    # Fallback to direct read
+    if [ -z "$content" ]; then
+        content=$(cat "$breakdown_file")
+    fi
+
     # Extract feature name from "# Task Breakdown: Feature Name" line
-    local feature_name=$(grep "^# Task Breakdown:" "$breakdown_file" | sed 's/# Task Breakdown: //')
+    local feature_name=$(echo "$content" | grep "^# Task Breakdown:" | sed 's/# Task Breakdown: //')
 
     if [ -n "$feature_name" ]; then
         echo "$feature_name"
@@ -140,7 +194,7 @@ get_feature_name_from_breakdown() {
 }
 
 # Count subtasks in breakdown file
-# Replaces: grep -c "^### Subtask" "$BREAKDOWN_PATH"
+# Uses starforge_read_file MCP tool if available
 get_subtask_count_from_breakdown() {
     local breakdown_file=$1
 
@@ -149,18 +203,21 @@ get_subtask_count_from_breakdown() {
         return 1
     fi
 
-    # Count lines starting with "### Subtask"
-    # Use grep -c which returns count, or 0 if no matches
-    local count
-    count=$(grep -c "^### Subtask" "$breakdown_file" 2>/dev/null)
-
-    # grep -c returns 0 if no matches, non-zero exit code if no file
-    # We already checked file exists, so we can safely use the count
-    if [ $? -eq 0 ]; then
-        echo "$count"
-        return 0
-    else
-        echo "0"
-        return 0
+    # Try MCP tool first
+    local content=""
+    if type -t starforge_read_file >/dev/null 2>&1; then
+        # Convert to relative path
+        local relative_path="${breakdown_file#$STARFORGE_MAIN_REPO/}"
+        content=$(starforge_read_file "$relative_path" 2>/dev/null | jq -r '.content' 2>/dev/null)
     fi
+
+    # Fallback to direct read
+    if [ -z "$content" ]; then
+        content=$(cat "$breakdown_file" 2>/dev/null)
+    fi
+
+    # Count lines starting with "### Subtask"
+    local count=$(echo "$content" | grep -c "^### Subtask" 2>/dev/null || echo "0")
+    echo "$count"
+    return 0
 }
