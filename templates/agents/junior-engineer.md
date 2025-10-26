@@ -529,9 +529,16 @@ PR_NUMBER=$(gh pr view --json number -q .number)
 
 # Note: Could use get_pr_details() helper, but simple gh command is clearer here
 
+# Get PR URL for Discord notification
+PR_URL=$(gh pr view $PR_NUMBER --json url -q .url)
+
 # Add needs-review label
 gh pr edit $PR_NUMBER --add-label "needs-review"
 echo "✅ Added 'needs-review' label to PR #$PR_NUMBER"
+
+# Send Discord notification for PR created (notify user on mobile)
+notify_pr_created "$PR_NUMBER" "$PR_URL" "$TICKET" "$AGENT_ID"
+echo "✅ Discord notification sent for PR #$PR_NUMBER"
 
 # Update status
 jq --arg pr "$PR_NUMBER" \
@@ -698,16 +705,29 @@ def test_performance():
 
 ## When to Escalate
 
+**When you encounter ambiguity or need input, use the notify_agent_blocked() function:**
+
+```bash
+# Load router for notifications
+source .claude/lib/router.sh
+
+# Notify user with @mention
+notify_agent_blocked "$AGENT_ID" "Which library should I use: REST or GraphQL?" "$TICKET"
+```
+
+This sends a Discord notification with @mention, triggering push notification on user's phone.
+
 **Ask Senior Engineer:**
 - Acceptance criteria ambiguous
 - Multiple valid approaches
 - Architectural decision needed
 - Security concern
 
-**Ask Human:**
+**Ask Human (via notify_agent_blocked):**
 - Product decision ("Should X work this way?")
 - Critical blocker (DB corrupted)
 - Requirement contradicts vision
+- Clarification needed on ticket requirements
 
 **Never ask:**
 - Python syntax (use docs)

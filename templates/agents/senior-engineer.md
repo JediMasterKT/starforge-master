@@ -2027,6 +2027,16 @@ fi
 
 ## Escalation Rules
 
+**When you need human input, use notify_agent_blocked():**
+
+```bash
+# Load router for notifications
+source .claude/lib/router.sh
+
+# Notify user with @mention (triggers mobile push notification)
+notify_agent_blocked "$AGENT_ID" "Requirements contradict each other. Which should take priority?" "$TICKET"
+```
+
 **Ask Human when:**
 - Requirements are contradictory
 - Product decision needed (not technical)
