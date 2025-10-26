@@ -397,3 +397,68 @@ jobs:
         with:
           name: documentation-check-results
           path: documentation-check.log
+
+  # Job 18: Discord Notification on Test Failure
+  notify-on-failure:
+    name: Notify Discord on Test Failure
+    runs-on: ubuntu-latest
+    if: failure()
+    needs:
+      - test-install
+      - test-cli
+      - test-foundation
+      - test-router
+      - test-logger
+      - test-routing
+      - test-hardcoded-patterns
+      - test-fresh-install-e2e
+      - test-github-workflow
+      - test-settings-permissions
+      - test-senior-engineer
+      - test-tpm-refactoring
+      - test-junior-engineer-template
+      - test-github-helpers
+      - test-sandbox
+      - test-e2e
+      - test-documentation
+    steps:
+      - name: Notify Discord on Test Failure
+        if: failure()
+        run: |
+          # Build CI logs URL
+          CI_LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Get PR number
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          # Determine which test failed (check previous jobs)
+          FAILED_TEST="One or more tests"
+
+          # Get error message from workflow (first 500 chars)
+          ERROR_MESSAGE="CI tests failed. See logs for details."
+
+          # Build Discord webhook payload
+          PAYLOAD=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "❌ CI Tests Failed",
+              "description": "Tests failing on PR #${PR_NUMBER}\n\n**Failed Test:** ${FAILED_TEST}\n\n**Error:**\n\`\`\`\n${ERROR_MESSAGE}\n\`\`\`\n\n👉 [View Full CI Logs](${CI_LOGS_URL})",
+              "color": 15158332,
+              "fields": [
+                {"name":"PR Number","value":"#${PR_NUMBER}","inline":true},
+                {"name":"Failed Test","value":"${FAILED_TEST}","inline":true}
+              ],
+              "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")",
+              "footer": {
+                "text": "StarForge System"
+              }
+            }]
+          }
+          EOF
+          )
+
+          # Send to Discord webhook
+          curl -X POST "${{ secrets.DISCORD_WEBHOOK_STARFORGE_ALERTS }}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            || echo "Failed to send Discord notification (webhook may not be configured)"

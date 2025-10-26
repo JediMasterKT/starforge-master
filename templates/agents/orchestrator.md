@@ -370,6 +370,9 @@ echo "✅ Processed all qa-declined PRs"
 ## Blocker Handling
 
 ```bash
+# Load router for notifications
+source .claude/lib/router.sh
+
 # Check for blocked agents
 for AGENT in junior-dev-a junior-dev-b junior-dev-c; do
   STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
@@ -378,14 +381,15 @@ for AGENT in junior-dev-a junior-dev-b junior-dev-c; do
     if [ "$STATUS" = "blocked" ]; then
       BLOCKER=$(jq -r '.blocker_reason' "$STATUS_FILE")
       TICKET=$(jq -r '.ticket' "$STATUS_FILE")
-      
+
       echo "🚨 $AGENT blocked on ticket #$TICKET"
       echo "   Reason: $BLOCKER"
-      
+
       # Escalate based on blocker type
       case "$BLOCKER" in
         *dependency*)
           echo "   → Escalating to human: Dependency blocker"
+          notify_agent_blocked "$AGENT" "Dependency blocker: $BLOCKER" "$TICKET"
           ;;
         *conflict*)
           echo "   → Notifying agent: Rebase required"
