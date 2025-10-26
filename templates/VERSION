@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "commit": "c7390ca",
+  "date": "2025-10-26",
+  "changelog": [
+    "Initial StarForge release",
+    "Multi-agent development system",
+    "Orchestrator, Senior Engineer, Junior Engineer, QA Engineer, TPM",
+    "Autonomous daemon with trigger-based handoffs",
+    "GitHub integration for issues and PRs"
+  ],
+  "breaking_changes": []
+}

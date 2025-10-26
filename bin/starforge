@@ -88,6 +88,270 @@ cleanup_old_backups() {
     fi
 }
 
+# Normalize paths in settings.json for accurate comparison
+normalize_settings_json() {
+    local file="$1"
+
+    # Replace project-specific paths with placeholder for comparison
+    # This ensures we only detect actual content changes, not path differences
+    sed 's|"cwd": "[^"]*"|"cwd": "{{PROJECT_DIR}}"|g' "$file" | \
+    sed 's|/Users/[^/"]*/[^/"]*|{{PROJECT_DIR}}|g' | \
+    sed 's|/home/[^/"]*/[^/"]*|{{PROJECT_DIR}}|g'
+}
+
+# Show diff preview before update
+show_update_diff() {
+    local starforge_dir="$1"
+    local target_dir="$2"
+    local claude_dir="$3"
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📊 Update Preview${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Show version change
+    local old_version="unknown"
+    local new_version="unknown"
+    local old_commit="unknown"
+    local new_commit="unknown"
+
+    if [ -f "$claude_dir/STARFORGE_VERSION" ]; then
+        old_version=$(jq -r '.version // "unknown"' "$claude_dir/STARFORGE_VERSION" 2>/dev/null || echo "unknown")
+        old_commit=$(jq -r '.commit // "unknown"' "$claude_dir/STARFORGE_VERSION" 2>/dev/null || echo "unknown")
+    fi
+
+    if [ -f "$starforge_dir/templates/VERSION" ]; then
+        new_version=$(jq -r '.version // "unknown"' "$starforge_dir/templates/VERSION" 2>/dev/null || echo "unknown")
+        new_commit=$(jq -r '.commit // "unknown"' "$starforge_dir/templates/VERSION" 2>/dev/null || echo "unknown")
+    fi
+
+    echo -e "${YELLOW}Version:${NC} $old_version → $new_version"
+    echo -e "${YELLOW}Commit:${NC}  $old_commit → $new_commit"
+    echo ""
+
+    # Show changelog if available
+    if [ -f "$starforge_dir/templates/VERSION" ]; then
+        local changelog=$(jq -r '.changelog[]? // empty' "$starforge_dir/templates/VERSION" 2>/dev/null)
+        if [ -n "$changelog" ]; then
+            echo -e "${YELLOW}Changelog:${NC}"
+            echo "$changelog" | while IFS= read -r line; do
+                echo "  • $line"
+            done
+            echo ""
+        fi
+
+        # Show breaking changes if any
+        local breaking=$(jq -r '.breaking_changes[]? // empty' "$starforge_dir/templates/VERSION" 2>/dev/null)
+        if [ -n "$breaking" ]; then
+            echo -e "${RED}⚠️  BREAKING CHANGES:${NC}"
+            echo "$breaking" | while IFS= read -r line; do
+                echo "  ❗ $line"
+            done
+            echo ""
+        fi
+    fi
+
+    echo -e "${YELLOW}File Changes:${NC}"
+    echo ""
+
+    # Track stats
+    local changed_count=0
+    local new_count=0
+    local unchanged_count=0
+
+    # Check each template directory
+    local dirs=("agents" "scripts" "hooks" "bin")
+
+    for dir in "${dirs[@]}"; do
+        if [ -d "$starforge_dir/templates/$dir" ]; then
+            for template_file in "$starforge_dir/templates/$dir"/*; do
+                if [ -f "$template_file" ]; then
+                    local filename=$(basename "$template_file")
+                    local target_file="$claude_dir/$dir/$filename"
+
+                    if [ ! -f "$target_file" ]; then
+                        # New file
+                        ((new_count++))
+                        local lines=$(wc -l < "$template_file" 2>/dev/null | tr -d ' ')
+                        echo -e "  ${GREEN}NEW${NC}     $dir/$filename (+$lines lines)"
+                    else
+                        # Compare files
+                        local diff_output=$(diff -u "$target_file" "$template_file" 2>/dev/null || true)
+
+                        if [ -n "$diff_output" ]; then
+                            ((changed_count++))
+
+                            # Count added/removed lines
+                            local added=$(echo "$diff_output" | grep -c "^+" | tail -1 || echo "0")
+                            local removed=$(echo "$diff_output" | grep -c "^-" | tail -1 || echo "0")
+
+                            # Adjust for diff header lines
+                            added=$((added > 2 ? added - 2 : 0))
+                            removed=$((removed > 2 ? removed - 2 : 0))
+
+                            echo -e "  ${YELLOW}CHANGED${NC} $dir/$filename (+$added -$removed)"
+                        else
+                            ((unchanged_count++))
+                        fi
+                    fi
+                fi
+            done
+        fi
+    done
+
+    # Check protocol files
+    for file in "CLAUDE.md" "LEARNINGS.md"; do
+        if [ -f "$starforge_dir/templates/$file" ]; then
+            if [ ! -f "$claude_dir/$file" ]; then
+                ((new_count++))
+                local lines=$(wc -l < "$starforge_dir/templates/$file" 2>/dev/null | tr -d ' ')
+                echo -e "  ${GREEN}NEW${NC}     $file (+$lines lines)"
+            else
+                local diff_output=$(diff -u "$claude_dir/$file" "$starforge_dir/templates/$file" 2>/dev/null || true)
+
+                if [ -n "$diff_output" ]; then
+                    ((changed_count++))
+                    local added=$(echo "$diff_output" | grep -c "^+" | tail -1 || echo "0")
+                    local removed=$(echo "$diff_output" | grep -c "^-" | tail -1 || echo "0")
+                    added=$((added > 2 ? added - 2 : 0))
+                    removed=$((removed > 2 ? removed - 2 : 0))
+                    echo -e "  ${YELLOW}CHANGED${NC} $file (+$added -$removed)"
+                else
+                    ((unchanged_count++))
+                fi
+            fi
+        fi
+    done
+
+    # Check settings.json with normalization
+    if [ -f "$starforge_dir/templates/settings/settings.json" ]; then
+        local template_settings=$(sed "s|{{PROJECT_DIR}}|$target_dir|g" "$starforge_dir/templates/settings/settings.json")
+        local norm_template=$(echo "$template_settings" | normalize_settings_json /dev/stdin)
+
+        if [ ! -f "$claude_dir/settings.json" ]; then
+            ((new_count++))
+            local lines=$(echo "$template_settings" | wc -l | tr -d ' ')
+            echo -e "  ${GREEN}NEW${NC}     settings.json (+$lines lines) ${RED}⚠️  BREAKING${NC}"
+        else
+            local norm_current=$(normalize_settings_json "$claude_dir/settings.json")
+
+            if [ "$norm_current" != "$norm_template" ]; then
+                ((changed_count++))
+                local diff_output=$(diff -u <(echo "$norm_current") <(echo "$norm_template") 2>/dev/null || true)
+                local added=$(echo "$diff_output" | grep -c "^+" | tail -1 || echo "0")
+                local removed=$(echo "$diff_output" | grep -c "^-" | tail -1 || echo "0")
+                added=$((added > 2 ? added - 2 : 0))
+                removed=$((removed > 2 ? removed - 2 : 0))
+                echo -e "  ${YELLOW}CHANGED${NC} settings.json (+$added -$removed) ${RED}⚠️  BREAKING${NC}"
+            else
+                ((unchanged_count++))
+            fi
+        fi
+    fi
+
+    echo ""
+    echo -e "${CYAN}Summary:${NC} $changed_count changed, $new_count new, $unchanged_count unchanged"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Interactive prompt
+    while true; do
+        echo -e "${YELLOW}Proceed with update?${NC}"
+        echo "  [y] Yes, apply changes"
+        echo "  [n] No, cancel update"
+        echo "  [d] Show detailed diff"
+        echo ""
+        read -p "Choice [y/n/d]: " -n 1 -r choice
+        echo ""
+
+        case "$choice" in
+            y|Y)
+                return 0
+                ;;
+            n|N)
+                echo -e "${YELLOW}Update cancelled${NC}"
+                return 1
+                ;;
+            d|D)
+                show_detailed_diff "$starforge_dir" "$target_dir" "$claude_dir"
+                echo ""
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter y, n, or d${NC}"
+                echo ""
+                ;;
+        esac
+    done
+}
+
+# Show detailed unified diff
+show_detailed_diff() {
+    local starforge_dir="$1"
+    local target_dir="$2"
+    local claude_dir="$3"
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📋 DETAILED DIFF${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Show diffs for each changed file
+    local dirs=("agents" "scripts" "hooks" "bin")
+
+    for dir in "${dirs[@]}"; do
+        if [ -d "$starforge_dir/templates/$dir" ]; then
+            for template_file in "$starforge_dir/templates/$dir"/*; do
+                if [ -f "$template_file" ]; then
+                    local filename=$(basename "$template_file")
+                    local target_file="$claude_dir/$dir/$filename"
+
+                    if [ -f "$target_file" ]; then
+                        local diff_output=$(diff -u "$target_file" "$template_file" 2>/dev/null || true)
+
+                        if [ -n "$diff_output" ]; then
+                            echo -e "${YELLOW}━━━ $dir/$filename ━━━${NC}"
+                            echo "$diff_output"
+                            echo ""
+                        fi
+                    fi
+                fi
+            done
+        fi
+    done
+
+    # Protocol files
+    for file in "CLAUDE.md" "LEARNINGS.md"; do
+        if [ -f "$starforge_dir/templates/$file" ] && [ -f "$claude_dir/$file" ]; then
+            local diff_output=$(diff -u "$claude_dir/$file" "$starforge_dir/templates/$file" 2>/dev/null || true)
+
+            if [ -n "$diff_output" ]; then
+                echo -e "${YELLOW}━━━ $file ━━━${NC}"
+                echo "$diff_output"
+                echo ""
+            fi
+        fi
+    done
+
+    # Settings.json with normalization
+    if [ -f "$starforge_dir/templates/settings/settings.json" ] && [ -f "$claude_dir/settings.json" ]; then
+        local template_settings=$(sed "s|{{PROJECT_DIR}}|$target_dir|g" "$starforge_dir/templates/settings/settings.json")
+        local norm_template=$(echo "$template_settings" | normalize_settings_json /dev/stdin)
+        local norm_current=$(normalize_settings_json "$claude_dir/settings.json")
+
+        if [ "$norm_current" != "$norm_template" ]; then
+            echo -e "${YELLOW}━━━ settings.json (normalized) ━━━${NC}"
+            diff -u <(echo "$norm_current") <(echo "$norm_template") 2>/dev/null || true
+            echo ""
+        fi
+    fi
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -124,6 +388,12 @@ case "$COMMAND" in
         # Get target directory
         TARGET_DIR="$(pwd)"
         CLAUDE_DIR="$TARGET_DIR/.claude"
+
+        # Show diff preview and get confirmation BEFORE backup
+        if ! show_update_diff "$STARFORGE_DIR" "$TARGET_DIR" "$CLAUDE_DIR"; then
+            # User cancelled
+            exit 0
+        fi
 
         # Create backup BEFORE any file overwrites
         create_backup "$CLAUDE_DIR"
@@ -168,6 +438,11 @@ case "$COMMAND" in
             echo -e "${INFO}Adding .env.example template..."
             cp "$STARFORGE_DIR/templates/.env.example" "$TARGET_DIR/.env.example"
             echo -e "${CHECK} Added .env.example (configure for Discord notifications)"
+        fi
+
+        # Copy VERSION file to track installed version
+        if [ -f "$STARFORGE_DIR/templates/VERSION" ]; then
+            cp "$STARFORGE_DIR/templates/VERSION" "$CLAUDE_DIR/STARFORGE_VERSION"
         fi
 
         echo ""
