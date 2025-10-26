@@ -124,20 +124,21 @@ starforge_search_files() {
 
   # Execute find and pipe directly to jq for efficient JSON array building
   # This avoids intermediate bash array and multiple process spawns
-  # -print0 for null-separated output (handles spaces/special chars)
+  # -print0 for null-separated output (handles newlines/spaces/special chars)
   local json_array
   local find_results
 
-  # Find files and convert to absolute paths, then pipe to jq
-  find_results=$(find "$abs_search_path" -type f -name "$pattern" -print 2>/dev/null)
+  # Find files using -print0 for null-separated output
+  # This correctly handles newlines, spaces, and special characters in filenames
+  find_results=$(find "$abs_search_path" -type f -name "$pattern" -print0 2>/dev/null)
 
   if [ -z "$find_results" ]; then
     # No matches - empty array
     json_array="[]"
   else
-    # Use jq to build JSON array directly from find output
-    # This is much faster than looping in bash
-    json_array=$(echo "$find_results" | jq -R . | jq -s .)
+    # Use null-separated input with jq
+    # split("\u0000") splits on null bytes, map(select(. != "")) removes empty strings
+    json_array=$(echo -n "$find_results" | jq -Rs 'split("\u0000") | map(select(. != ""))')
   fi
 
   # Return JSON response
