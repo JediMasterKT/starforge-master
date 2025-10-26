@@ -65,7 +65,6 @@ starforge_read_file() {
   fi
 }
 
-<<<<<<< HEAD
 # starforge_search_files - Search for files matching glob pattern
 #
 # Recursively searches directory for files matching a glob pattern.
