@@ -50,6 +50,63 @@ get_project_context() {
 }
 
 # ============================================================================
+# METADATA TOOLS (D-stream)
+# ============================================================================
+
+# get_agent_learnings - Returns agent-specific learnings
+#
+# Args:
+#   $1 - Agent ID (e.g., "junior-engineer", "senior-engineer")
+#
+# Returns:
+#   JSON object with MCP response format containing agent learnings
+#
+# Exit codes:
+#   0 - Success (even if file doesn't exist, returns empty/default message)
+#   1 - Error (invalid parameters)
+#
+# Example:
+#   get_agent_learnings "junior-engineer"
+#   {"content": [{"type": "text", "text": "# Agent Learnings..."}]}
+get_agent_learnings() {
+  local agent=$1
+
+  # Validate agent parameter
+  if [ -z "$agent" ]; then
+    echo '{"error": "agent parameter is required"}' >&2
+    return 1
+  fi
+
+  local learnings_file="$STARFORGE_CLAUDE_DIR/agents/agent-learnings/$agent/learnings.md"
+
+  # Check if file exists
+  if [ ! -f "$learnings_file" ]; then
+    # Return empty learnings message (graceful handling)
+    local empty_content=$(cat <<EOF
+---
+name: "$agent"
+description: "No learnings recorded yet"
+---
+
+# Agent Learnings
+
+No learnings have been recorded for this agent yet.
+EOF
+)
+    local content_json=$(echo "$empty_content" | jq -Rs .)
+    echo "{\"content\": [{\"type\": \"text\", \"text\": $content_json}]}"
+    return 0
+  fi
+
+  # Read file and convert to JSON string
+  local content=$(cat "$learnings_file" | jq -Rs .)
+
+  # Return MCP response format
+  echo "{\"content\": [{\"type\": \"text\", \"text\": $content}]}"
+  return 0
+}
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
