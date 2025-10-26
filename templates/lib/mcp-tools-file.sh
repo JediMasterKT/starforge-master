@@ -193,8 +193,12 @@ starforge_write_file() {
   fi
 
   # Atomic write: write to temp file first, then move
-  # Using $$ (process ID) ensures unique temp file name
-  local temp_file="${file_path}.tmp.$$"
+  # Using mktemp ensures unique temp file name (prevents race conditions - fixes C2)
+  local temp_file
+  temp_file=$(mktemp "${parent_dir}/.tmp.XXXXXX") || {
+    echo '{"error": "Failed to create temp file"}'
+    return 1
+  }
 
   # Write content to temp file
   # Using printf instead of echo to handle special characters correctly
@@ -202,6 +206,14 @@ starforge_write_file() {
     # Clean up temp file on error
     rm -f "$temp_file" 2>/dev/null
     echo '{"error": "Failed to write to temp file"}'
+    return 1
+  fi
+
+  # Security check: prevent symlink attacks (fixes C1)
+  # If target path is a symlink, reject to prevent overwriting sensitive files
+  if [ -L "$file_path" ]; then
+    rm -f "$temp_file" 2>/dev/null
+    echo '{"error": "Target path is a symbolic link (security risk)"}'
     return 1
   fi
 
