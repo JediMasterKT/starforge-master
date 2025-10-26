@@ -257,33 +257,55 @@ show_update_diff() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    # Interactive prompt
+    # Layer 1: Skip prompt if --force flag
+    if [ "$FORCE_UPDATE" = true ]; then
+        echo -e "${GREEN}🚀 Force mode: Proceeding with update...${NC}"
+        return 0
+    fi
+
+    # Layer 2: Detect TTY - error immediately if no TTY and no --force
+    if [ ! -t 0 ]; then
+        echo -e "${RED}❌ No TTY detected${NC}"
+        echo "   Cannot show interactive prompt without terminal"
+        echo "   Run with: ${YELLOW}bin/starforge update --force${NC}"
+        return 1
+    fi
+
+    # Layer 3: Interactive prompt with 10-second timeout
     while true; do
         echo -e "${YELLOW}Proceed with update?${NC}"
         echo "  [y] Yes, apply changes"
         echo "  [n] No, cancel update"
         echo "  [d] Show detailed diff"
         echo ""
-        read -p "Choice [y/n/d]: " -n 1 -r choice
-        echo ""
 
-        case "$choice" in
-            y|Y)
-                return 0
-                ;;
-            n|N)
-                echo -e "${YELLOW}Update cancelled${NC}"
-                return 1
-                ;;
-            d|D)
-                show_detailed_diff "$starforge_dir" "$target_dir" "$claude_dir"
-                echo ""
-                ;;
-            *)
-                echo -e "${RED}Invalid choice. Please enter y, n, or d${NC}"
-                echo ""
-                ;;
-        esac
+        if read -t 10 -p "Choice [y/n/d]: " -n 1 -r choice 2>/dev/null; then
+            echo ""
+
+            case "$choice" in
+                y|Y)
+                    return 0
+                    ;;
+                n|N)
+                    echo -e "${YELLOW}Update cancelled${NC}"
+                    return 1
+                    ;;
+                d|D)
+                    show_detailed_diff "$starforge_dir" "$target_dir" "$claude_dir"
+                    echo ""
+                    ;;
+                *)
+                    echo -e "${RED}Invalid choice. Please enter y, n, or d${NC}"
+                    echo ""
+                    ;;
+            esac
+        else
+            # Timeout or read error
+            echo ""
+            echo -e "${YELLOW}⏱️  Timeout (10 seconds) - cancelling update${NC}"
+            echo "   Run with: ${YELLOW}bin/starforge update --force${NC}"
+            return 1
+        fi
     done
 }
 
@@ -363,6 +385,20 @@ case "$COMMAND" in
         ;;
 
     update)
+        # Parse command-line flags
+        FORCE_UPDATE=false
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --force|-f)
+                    FORCE_UPDATE=true
+                    shift
+                    ;;
+                *)
+                    shift
+                    ;;
+            esac
+        done
+
         # Update StarForge agents from latest templates
         if [ ! -d ".claude" ]; then
             echo -e "${RED}❌ StarForge not installed in this project${NC}"
@@ -912,9 +948,10 @@ case "$COMMAND" in
         echo "    Install StarForge in the current project"
         echo "    Creates .claude/ structure, agent definitions, and git worktrees"
         echo ""
-        echo -e "  ${YELLOW}starforge update${NC}"
+        echo -e "  ${YELLOW}starforge update [--force]${NC}"
         echo "    Update agents and scripts from latest templates"
         echo "    Pulls from GitHub and refreshes .claude/ without re-setup"
+        echo "    Use --force to skip interactive confirmation (required for automation/CI/CD)"
         echo ""
         echo -e "  ${YELLOW}starforge analyze${NC}"
         echo "    Analyze your project and generate documentation"
