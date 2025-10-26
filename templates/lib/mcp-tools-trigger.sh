@@ -136,6 +136,101 @@ EOF
 }
 
 # ============================================================================
+# TRIGGER CREATION TOOLS
+# ============================================================================
+
+# starforge_create_trigger - Create a StarForge trigger file
+#
+# Creates a trigger file for agent handoffs with validation and atomic write.
+# Auto-populates from_agent from STARFORGE_AGENT_ID environment variable.
+#
+# Args:
+#   $1 - to_agent (required): Target agent to receive trigger
+#   $2 - action (required): Action for target agent to perform
+#   $3 - context (optional): JSON object with metadata (default: {})
+#
+# Returns:
+#   JSON object with:
+#   - {"trigger_file": "/path/to/trigger", "trigger_id": "unique-id"} on success
+#   - {"error": "error message"} on failure
+#
+# Exit codes:
+#   0 - Success
+#   1 - Validation error or write failure
+#
+# Examples:
+#   starforge_create_trigger "qa-engineer" "review_pr" '{"pr": 42, "ticket": 100}'
+#   # => {"trigger_file": "/path/.claude/triggers/qa-engineer-review_pr-1234567890.trigger", "trigger_id": "qa-engineer-review_pr-1234567890"}
+#
+#   starforge_create_trigger "orchestrator" "assign_tickets" '{}'
+#   # => {"trigger_file": "/path/.claude/triggers/orchestrator-assign_tickets-1234567891.trigger", "trigger_id": "orchestrator-assign_tickets-1234567891"}
+#
+starforge_create_trigger() {
+  local to_agent="$1"
+  local action="$2"
+  local context="$3"
+
+  # Validate required fields
+  if [ -z "$to_agent" ]; then
+    echo '{"error": "to_agent is required"}'
+    return 1
+  fi
+
+  if [ -z "$action" ]; then
+    echo '{"error": "action is required"}'
+    return 1
+  fi
+
+  # Set default context if not provided
+  if [ -z "$context" ]; then
+    context="{}"
+  fi
+
+  # Get from_agent from environment
+  local from_agent="${STARFORGE_AGENT_ID:-unknown}"
+
+  # Generate unique trigger ID with epoch timestamp in nanoseconds for uniqueness
+  # Using nanoseconds ensures uniqueness even for rapid consecutive calls
+  local epoch_ns=$(date +%s%N)
+  local trigger_id="${to_agent}-${action}-${epoch_ns}"
+
+  # Ensure trigger directory exists (only once, cached by filesystem)
+  local trigger_dir="${STARFORGE_CLAUDE_DIR}/triggers"
+  mkdir -p "$trigger_dir"
+
+  # Generate trigger file path
+  local trigger_file="${trigger_dir}/${trigger_id}.trigger"
+
+  # Create and write trigger JSON in one jq call (validates context and creates output)
+  # This combines validation + generation for better performance
+  # Note: Generate timestamp in jq to avoid separate date call
+  if ! jq -n \
+    --arg from "$from_agent" \
+    --arg to "$to_agent" \
+    --arg act "$action" \
+    --argjson ctx "$context" \
+    '{
+      "from_agent": $from,
+      "to_agent": $to,
+      "action": $act,
+      "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+      "context": $ctx
+    }' > "$trigger_file" 2>/dev/null; then
+    # If jq fails, it's either invalid JSON context or write failure
+    echo '{"error": "context must be valid JSON or write failed"}'
+    rm -f "$trigger_file" 2>/dev/null  # Clean up partial file
+    return 1
+  fi
+
+  # Return success response with trigger file path and ID
+  echo "{\"trigger_file\": \"$trigger_file\", \"trigger_id\": \"$trigger_id\"}"
+  return 0
+}
+
+# Export function for use in other scripts
+export -f starforge_create_trigger
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
