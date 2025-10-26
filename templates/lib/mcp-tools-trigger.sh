@@ -230,6 +230,14 @@ starforge_create_trigger() {
 # Export function for use in other scripts
 export -f starforge_create_trigger
 
+# Auto-register tools with MCP server when module is loaded
+# Only register if register_tool function exists (i.e., we're being sourced by mcp-server)
+if declare -f register_tool > /dev/null 2>&1; then
+    # Trigger creation (modifies state by creating files, not destructive, not idempotent)
+    # Each call creates a new trigger file even with same params (timestamped)
+    register_tool "starforge_create_trigger" "starforge_create_trigger" false false false
+fi
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================

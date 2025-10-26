@@ -374,3 +374,19 @@ export -f starforge_list_issues
 export -f starforge_run_gh_command
 export -f starforge_create_issue
 export -f starforge_create_pr
+
+# Auto-register tools with MCP server when module is loaded
+# Only register if register_tool function exists (i.e., we're being sourced by mcp-server)
+if declare -f register_tool > /dev/null 2>&1; then
+    # Read-only tool (doesn't modify state, safe to retry, idempotent)
+    register_tool "starforge_list_issues" "starforge_list_issues" true false true
+
+    # Generic gh command runner (may or may not modify state - be cautious)
+    register_tool "starforge_run_gh_command" "starforge_run_gh_command" false false false
+
+    # Create issue (modifies state, but not destructive, not idempotent - creates new issue each time)
+    register_tool "starforge_create_issue" "starforge_create_issue" false false false
+
+    # Create PR (modifies state, but not destructive, not idempotent - creates new PR each time)
+    register_tool "starforge_create_pr" "starforge_create_pr" false false false
+fi

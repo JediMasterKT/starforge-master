@@ -443,3 +443,15 @@ export -f starforge_read_file
 export -f starforge_search_files
 export -f starforge_write_file
 export -f starforge_grep_content
+
+# Auto-register tools with MCP server when module is loaded
+# Only register if register_tool function exists (i.e., we're being sourced by mcp-server)
+if declare -f register_tool > /dev/null 2>&1; then
+    # Read-only tools (don't modify state, safe to retry, idempotent)
+    register_tool "starforge_read_file" "starforge_read_file" true false true
+    register_tool "starforge_search_files" "starforge_search_files" true false true
+    register_tool "starforge_grep_content" "starforge_grep_content" true false true
+
+    # Write tool (modifies state, not destructive if called multiple times, idempotent)
+    register_tool "starforge_write_file" "starforge_write_file" false false true
+fi
