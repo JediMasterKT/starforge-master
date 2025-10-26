@@ -134,6 +134,107 @@ starforge_run_gh_command() {
     gh $gh_args 2>&1
 }
 
+
+# starforge_create_issue - Create a new GitHub issue
+#
+# Wraps `gh issue create` with MCP-friendly JSON output.
+#
+# Args:
+#   --title <title>        Issue title (required)
+#   --body <body>          Issue body/description (required)
+#   --label <labels>       Comma-separated labels (optional)
+#   --assignee <users>     Comma-separated assignees (optional)
+#
+# Returns:
+#   JSON object with fields:
+#   - number: Created issue number
+#   - url: Issue URL
+#
+# Example:
+#   starforge_create_issue --title "Bug fix" --body "Fix the thing" --label "bug,P1"
+#
+starforge_create_issue() {
+    local title=""
+    local body=""
+    local labels=""
+    local assignees=""
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --title)
+                title="$2"
+                shift 2
+                ;;
+            --body)
+                body="$2"
+                shift 2
+                ;;
+            --label)
+                labels="$2"
+                shift 2
+                ;;
+            --assignee)
+                assignees="$2"
+                shift 2
+                ;;
+            *)
+                echo "Error: Unknown argument: $1" >&2
+                return 1
+                ;;
+        esac
+    done
+
+    # Validate required parameters
+    if [ -z "$title" ]; then
+        echo "Error: --title is required" >&2
+        return 1
+    fi
+
+    if [ -z "$body" ]; then
+        echo "Error: --body is required" >&2
+        return 1
+    fi
+
+    # Build gh issue create command
+    local cmd="gh issue create --title \"$title\" --body \"$body\""
+
+    # Add optional parameters
+    if [ -n "$labels" ]; then
+        cmd="$cmd --label \"$labels\""
+    fi
+
+    if [ -n "$assignees" ]; then
+        cmd="$cmd --assignee \"$assignees\""
+    fi
+
+    # Execute and capture URL
+    local issue_url
+    issue_url=$(eval "$cmd" 2>&1)
+
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create issue: $issue_url" >&2
+        return 1
+    fi
+
+    # Extract issue number from URL
+    # URL format: https://github.com/owner/repo/issues/123
+    local issue_number
+    issue_number=$(echo "$issue_url" | sed 's/.*\/issues\///' | tr -d '[:space:]')
+
+    if [ -z "$issue_number" ]; then
+        echo "Error: Failed to extract issue number from: $issue_url" >&2
+        return 1
+    fi
+
+    # Return JSON
+    jq -n \
+        --arg number "$issue_number" \
+        --arg url "$issue_url" \
+        '{number: ($number | tonumber), url: $url}'
+}
+
 # Export functions for MCP server use
 export -f starforge_list_issues
 export -f starforge_run_gh_command
+export -f starforge_create_issue

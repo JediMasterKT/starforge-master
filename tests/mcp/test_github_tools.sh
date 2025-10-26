@@ -351,6 +351,14 @@ test_handles_gh_auth_errors
 test_validates_command_syntax
 test_allows_multiple_gh_subcommands
 
+
+# Create issue tests
+test_creates_issue_successfully
+test_creates_issue_with_labels
+test_error_handling_missing_title
+test_error_handling_missing_body
+test_creates_issue_with_assignees
+
 # Summary
 echo ""
 echo "=========================================="
