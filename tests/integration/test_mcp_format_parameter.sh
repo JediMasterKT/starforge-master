@@ -131,8 +131,8 @@ fi
 rm -f "$test_file"
 echo ""
 
-# Test 4: Backward compatibility (detailed is default for read_file)
-echo "Test 4: Backward compatibility"
+# Test 4: Default standardization (concise is default for read_file)
+echo "Test 4: Default standardization"
 test_file=$(mktemp)
 for i in {1..150}; do
     echo "Line $i" >> "$test_file"
@@ -140,11 +140,17 @@ done
 
 response_default=$(starforge_read_file "$test_file")
 
-# Default should include all lines (detailed)
-if echo "$response_default" | grep -q "Line 150"; then
-    echo "  ✅ Default format includes all lines (backward compat)"
+# Default should be concise (first 100 lines only)
+if echo "$response_default" | grep -q "Line 100"; then
+    if echo "$response_default" | grep -q "Line 101"; then
+        echo "  ❌ FAIL: Default format should be concise (exclude line 101)"
+        rm -f "$test_file"
+        exit 1
+    else
+        echo "  ✅ Default format is concise (line 100 present, 101 absent)"
+    fi
 else
-    echo "  ❌ FAIL: Default format should include all lines"
+    echo "  ❌ FAIL: Default format missing expected content"
     rm -f "$test_file"
     exit 1
 fi
