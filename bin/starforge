@@ -440,6 +440,46 @@ show_detailed_diff() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
+detect_active_agents() {
+    local claude_dir="$1"
+
+    # Find active claude processes
+    # Look for: claude processes with agent-related arguments
+    local active_pids=$(pgrep -f "claude.*(junior|senior|qa|orchestrator|tpm)" 2>/dev/null || true)
+
+    if [ -z "$active_pids" ]; then
+        return 1  # No active agents
+    fi
+
+    echo -e "${RED}❌ Cannot update: Active agents detected${NC}"
+    echo ""
+    echo "Active agents:"
+
+    while IFS= read -r pid; do
+        if [ -n "$pid" ]; then
+            local cmd=$(ps -p "$pid" -o command= 2>/dev/null || echo "unknown")
+            # Extract agent name from command
+            local agent="unknown"
+            if [[ "$cmd" =~ junior ]]; then agent="junior-engineer"; fi
+            if [[ "$cmd" =~ senior ]]; then agent="senior-engineer"; fi
+            if [[ "$cmd" =~ qa ]]; then agent="qa-engineer"; fi
+            if [[ "$cmd" =~ orchestrator ]]; then agent="orchestrator"; fi
+            if [[ "$cmd" =~ tpm ]]; then agent="tpm-agent"; fi
+
+            echo -e "  ${YELLOW}•${NC} PID $pid: $agent"
+        fi
+    done <<< "$active_pids"
+
+    echo ""
+    echo "Options:"
+    echo "  1. Wait for agents to complete"
+    echo "  2. Stop agents manually: kill <PID>"
+    echo "  3. Force update anyway: bin/starforge update --force"
+    echo ""
+
+    return 0  # Active agents found
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -472,6 +512,22 @@ case "$COMMAND" in
             exit 1
         fi
 
+        # Get target directory
+        TARGET_DIR="$(pwd)"
+        CLAUDE_DIR="$TARGET_DIR/.claude"
+
+        # Check for active agents (unless --force)
+        if [ "$FORCE_UPDATE" = false ]; then
+            if detect_active_agents "$CLAUDE_DIR"; then
+                echo -e "${RED}Update blocked${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Warning: Forcing update with active agents${NC}"
+            echo "This may cause issues with running agents."
+            echo ""
+        fi
+
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${BLUE}🔄 Updating StarForge Agents${NC}"
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -486,10 +542,6 @@ case "$COMMAND" in
             echo -e "${WARN}Could not pull from GitHub (using local templates)"
         fi
         cd - > /dev/null
-
-        # Get target directory
-        TARGET_DIR="$(pwd)"
-        CLAUDE_DIR="$TARGET_DIR/.claude"
 
         # Show diff preview and get confirmation BEFORE backup
         if ! show_update_diff "$STARFORGE_DIR" "$TARGET_DIR" "$CLAUDE_DIR"; then
