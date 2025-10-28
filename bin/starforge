@@ -1219,6 +1219,20 @@ case "$COMMAND" in
             exit 1
         fi
 
+        # Source status-helpers.sh for enhanced functionality
+        HELPER_LIB="${STARFORGE_LIB_DIR:-templates/lib}/status-helpers.sh"
+        if [ ! -f "$HELPER_LIB" ]; then
+            # Fallback: try .claude/lib if templates not found
+            HELPER_LIB=".claude/lib/status-helpers.sh"
+        fi
+
+        if [ -f "$HELPER_LIB" ]; then
+            source "$HELPER_LIB" || {
+                echo -e "${RED}Warning: Failed to load status-helpers.sh${NC}"
+                echo -e "${RED}Some enhanced features may not be available${NC}"
+            }
+        fi
+
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${BLUE}🤖 StarForge Agent Status${NC}"
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -1231,7 +1245,20 @@ case "$COMMAND" in
                 if echo "$line" | grep -q "junior-dev"; then
                     branch=$(echo "$line" | awk '{print $3}' | tr -d '[]')
                     path=$(echo "$line" | awk '{print $1}')
-                    echo "  $(basename "$path"): $branch"
+
+                    # Add last commit time if helper function available
+                    if declare -f get_last_commit_time >/dev/null 2>&1 && \
+                       declare -f time_since >/dev/null 2>&1; then
+                        commit_time=$(get_last_commit_time "$path")
+                        if [ "$commit_time" != "0" ]; then
+                            time_ago=$(time_since "$commit_time")
+                            echo "  $(basename "$path"): $branch (last commit: $time_ago)"
+                        else
+                            echo "  $(basename "$path"): $branch (no commits)"
+                        fi
+                    else
+                        echo "  $(basename "$path"): $branch"
+                    fi
                 fi
             done
             echo ""
@@ -1248,8 +1275,31 @@ case "$COMMAND" in
                     status=$(jq -r '.status // "unknown"' "$status_file" 2>/dev/null || echo "unknown")
                     ticket=$(jq -r '.ticket // "none"' "$status_file" 2>/dev/null || echo "none")
 
+                    # Calculate duration and progress if helper functions available
+                    if declare -f get_agent_duration >/dev/null 2>&1 && \
+                       declare -f format_duration >/dev/null 2>&1; then
+                        duration=$(get_agent_duration "$agent")
+                        duration_str=$(format_duration $duration)
+                    else
+                        duration_str=""
+                    fi
+
                     if [ "$status" = "working" ] && [ "$ticket" != "none" ]; then
-                        echo "  $agent: WORKING on #$ticket"
+                        # Check for stuck detection
+                        progress=""
+                        if declare -f analyze_agent_progress >/dev/null 2>&1 && [ -n "$duration" ]; then
+                            # Find worktree path for this agent
+                            worktree_path=$(git worktree list | grep "$agent" | awk '{print $1}' || echo "")
+                            if [ -n "$worktree_path" ] && [ -d "$worktree_path" ]; then
+                                progress=$(analyze_agent_progress "$worktree_path" "$duration")
+                            fi
+                        fi
+
+                        if [ -n "$duration_str" ]; then
+                            echo "  $agent: WORKING on #$ticket ($duration_str) $progress"
+                        else
+                            echo "  $agent: WORKING on #$ticket"
+                        fi
                     elif [ "$status" = "idle" ]; then
                         echo "  $agent: IDLE (ready for work)"
                     else
@@ -1299,6 +1349,50 @@ case "$COMMAND" in
             else
                 echo "  No triggers yet (will appear when agents communicate)"
             fi
+
+            # Add failed trigger warnings if helper function available
+            if declare -f get_failed_trigger_count >/dev/null 2>&1; then
+                failed=$(get_failed_trigger_count)
+                if [ "$failed" -gt 0 ]; then
+                    echo "  ⚠️  $failed failed triggers in .claude/triggers/failed/"
+                fi
+            fi
+            echo ""
+        fi
+
+        # Health summary (NEW SECTION)
+        if declare -f get_daemon_health >/dev/null 2>&1 && \
+           declare -f get_failed_trigger_count >/dev/null 2>&1; then
+            echo -e "${GREEN}HEALTH:${NC}"
+            daemon_health=$(get_daemon_health)
+            echo "  Daemon: $daemon_health"
+            failed_count=$(get_failed_trigger_count)
+            if [ "$failed_count" -gt 0 ]; then
+                echo "  Failed triggers: ⚠️  $failed_count (need cleanup)"
+            else
+                echo "  Failed triggers: ✅ None"
+            fi
+            echo ""
+        fi
+
+        # Velocity trend (NEW SECTION)
+        if declare -f calculate_velocity >/dev/null 2>&1; then
+            echo -e "${GREEN}VELOCITY:${NC}"
+            velocity=$(calculate_velocity 7)
+            if [ "$velocity" != "0" ]; then
+                echo "  Last 7 days: $velocity issues/day"
+            else
+                echo "  Last 7 days: No closed issues"
+            fi
+            echo ""
+        fi
+
+        # Next actions (NEW SECTION)
+        if declare -f suggest_next_action >/dev/null 2>&1; then
+            echo -e "${GREEN}NEXT ACTIONS:${NC}"
+            suggest_next_action | while IFS= read -r action; do
+                echo "  • $action"
+            done
             echo ""
         fi
         ;;
