@@ -12,12 +12,23 @@ LOCK_DIR="$CLAUDE_DIR/daemon.lock"
 LOG_FILE="$CLAUDE_DIR/logs/daemon.log"
 DAEMON_RUNNER="$STARFORGE_DIR/bin/daemon-runner.sh"
 
+# Flags
+SILENT_MODE=false
+CHECK_ONLY_MODE=false
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Output helper that respects silent mode
+output() {
+  if [ "$SILENT_MODE" = false ]; then
+    echo -e "$@"
+  fi
+}
 
 # Create required directories
 mkdir -p "$CLAUDE_DIR/logs"
@@ -54,7 +65,7 @@ check_stale_pid() {
     return 1  # Process exists, not stale
   else
     # Stale PID file
-    echo -e "${YELLOW}Cleaning up stale PID file (process $pid not found)${NC}"
+    output "${YELLOW}Cleaning up stale PID file (process $pid not found)${NC}"
     rm -f "$PID_FILE"
     remove_lock
     return 0
@@ -110,7 +121,18 @@ get_uptime() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 start_daemon() {
-  echo -e "${BLUE}Starting StarForge daemon...${NC}"
+  # Check-only mode: just check if running and exit
+  if [ "$CHECK_ONLY_MODE" = true ]; then
+    if is_running; then
+      output "${GREEN}Daemon is running${NC}"
+      return 0
+    else
+      output "${YELLOW}Daemon is not running${NC}"
+      return 1
+    fi
+  fi
+
+  output "${BLUE}Starting StarForge daemon...${NC}"
 
   # Clean up stale state
   check_stale_pid
@@ -118,27 +140,27 @@ start_daemon() {
   # Check if already running
   if is_running; then
     local pid=$(cat "$PID_FILE")
-    echo -e "${YELLOW}Daemon already running (PID: $pid)${NC}"
-    return 1
+    output "${YELLOW}Daemon already running (PID: $pid)${NC}"
+    return 0  # Return success (0) when already running for idempotent behavior
   fi
 
   # Create lock
   if ! create_lock; then
-    echo -e "${RED}Failed to acquire lock. Another daemon may be starting.${NC}"
+    output "${RED}Failed to acquire lock. Another daemon may be starting.${NC}"
     return 1
   fi
 
   # Check if daemon-runner exists
   if [ ! -f "$DAEMON_RUNNER" ]; then
-    echo -e "${RED}Error: daemon-runner.sh not found at $DAEMON_RUNNER${NC}"
+    output "${RED}Error: daemon-runner.sh not found at $DAEMON_RUNNER${NC}"
     remove_lock
     return 1
   fi
 
   # Check for fswatch
   if ! command -v fswatch &> /dev/null; then
-    echo -e "${RED}Error: fswatch not installed${NC}"
-    echo -e "${YELLOW}Install with: brew install fswatch${NC}"
+    output "${RED}Error: fswatch not installed${NC}"
+    output "${YELLOW}Install with: brew install fswatch${NC}"
     remove_lock
     return 1
   fi
@@ -153,11 +175,11 @@ start_daemon() {
   # Verify it started
   sleep 0.5
   if kill -0 "$pid" 2>/dev/null; then
-    echo -e "${GREEN}✓ Daemon started successfully (PID: $pid)${NC}"
-    echo -e "${BLUE}Logs: $LOG_FILE${NC}"
+    output "${GREEN}✓ Daemon started successfully (PID: $pid)${NC}"
+    output "${BLUE}Logs: $LOG_FILE${NC}"
     return 0
   else
-    echo -e "${RED}✗ Daemon failed to start${NC}"
+    output "${RED}✗ Daemon failed to start${NC}"
     rm -f "$PID_FILE"
     remove_lock
     return 1
@@ -264,7 +286,7 @@ ${BLUE}StarForge Daemon Manager${NC}
 Manages the StarForge daemon for autonomous agent operation.
 
 ${YELLOW}Usage:${NC}
-  starforge daemon <command>
+  starforge daemon [flags] <command>
 
 ${YELLOW}Commands:${NC}
   start      Start the daemon in background
@@ -274,10 +296,16 @@ ${YELLOW}Commands:${NC}
   logs       Tail the daemon log file
   help       Show this help message
 
+${YELLOW}Flags:${NC}
+  --silent       Suppress all output (useful for scripts)
+  --check-only   Check if daemon is running without starting it
+
 ${YELLOW}Examples:${NC}
   starforge daemon start
   starforge daemon status
   starforge daemon logs
+  starforge daemon --silent start           # Start quietly
+  starforge daemon --check-only start       # Check if running
 
 ${YELLOW}Files:${NC}
   PID:   $PID_FILE
@@ -295,8 +323,36 @@ EOF
 # Main
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Parse command
-COMMAND="${1:-}"
+# Parse flags and command
+COMMAND=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --silent)
+      SILENT_MODE=true
+      shift
+      ;;
+    --check-only)
+      CHECK_ONLY_MODE=true
+      shift
+      ;;
+    start|stop|restart|status|logs|help|--help|-h)
+      COMMAND="$1"
+      shift
+      break
+      ;;
+    *)
+      if [ -z "$COMMAND" ]; then
+        COMMAND="$1"
+        shift
+      else
+        echo -e "${RED}Error: Unknown flag '$1'${NC}"
+        echo ""
+        show_help
+        exit 1
+      fi
+      ;;
+  esac
+done
 
 case "$COMMAND" in
   start)
