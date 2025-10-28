@@ -1,0 +1,27 @@
+name: Require Human Approval
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+
+jobs:
+  check-human-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for human-approved label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            if (!labels.includes('human-approved')) {
+              core.setFailed('❌ Human approval required - PR missing "human-approved" label\n\n' +
+                'This PR cannot be merged until a human adds the "human-approved" label.\n' +
+                'After reviewing the PR:\n' +
+                '  1. Verify QA has approved (qa-approved label present)\n' +
+                '  2. Review the changes yourself\n' +
+                '  3. Add "human-approved" label to allow merge\n\n' +
+                'Status: Waiting for human approval');
+            } else {
+              core.info('✅ Human approval granted - "human-approved" label found\n\n' +
+                'This PR is ready for merge.');
+            }
