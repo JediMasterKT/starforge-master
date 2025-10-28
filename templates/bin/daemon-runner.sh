@@ -270,7 +270,7 @@ invoke_agent() {
 
   # Send agent start notification (if Discord configured)
   if type send_agent_start_notification &>/dev/null; then
-    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket"
+    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" "$message" "$pr" "$description"
   fi
 
   # Start background progress monitor
@@ -426,6 +426,11 @@ invoke_agent_parallel() {
   local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local ticket=$(jq -r '.context.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
 
+  # Extract additional context for notifications (issue #312)
+  local message=$(jq -r '.message // ""' "$trigger_file" 2>/dev/null || echo "")
+  local pr=$(jq -r '.context.pr // ""' "$trigger_file" 2>/dev/null || echo "")
+  local description=$(jq -r '.context.description // ""' "$trigger_file" 2>/dev/null || echo "")
+
   # Task 3: Read trigger content early (for future use in real invocation)
   local trigger_content=$(cat "$trigger_file")
 
@@ -452,7 +457,7 @@ invoke_agent_parallel() {
 
   # Send agent start notification (if Discord configured)
   if type send_agent_start_notification &>/dev/null; then
-    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" &
+    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" "$message" "$pr" "$description" &
   fi
 
   (
