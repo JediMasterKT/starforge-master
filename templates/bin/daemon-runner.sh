@@ -22,6 +22,7 @@ PROCESSED_COUNT=0
 # Parallel execution configuration
 PARALLEL_DAEMON=${PARALLEL_DAEMON:-false}  # Feature flag (default: sequential mode)
 MAX_CONCURRENT_AGENTS=${MAX_CONCURRENT_AGENTS:-999}  # Unlimited by default
+REAL_AGENT_INVOCATION=${REAL_AGENT_INVOCATION:-true}  # Enable real Claude CLI invocation (Task 1)
 AGENT_SLOTS_FILE="$CLAUDE_DIR/daemon/agent-slots.json"
 PROCESS_MONITOR_INTERVAL=10  # Check running processes every 10 seconds
 
@@ -344,6 +345,9 @@ invoke_agent_parallel() {
   local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local ticket=$(jq -r '.context.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
 
+  # Task 3: Read trigger content early (for future use in real invocation)
+  local trigger_content=$(cat "$trigger_file")
+
   if [ "$to_agent" = "unknown" ] || [ "$to_agent" = "null" ]; then
     log_event "ERROR" "Missing 'to_agent' field in $(basename "$trigger_file")"
     return 2  # Parse error
@@ -501,6 +505,12 @@ process_trigger() {
 
   # Mark as currently processing
   save_state "$trigger_file"
+
+  # Task 2: Validate claude CLI available if real invocation enabled
+  if [ "$REAL_AGENT_INVOCATION" = "true" ] && ! command -v claude &> /dev/null; then
+    log_event "ERROR" "claude CLI not found in PATH (required for agent invocation)" >> "$LOG_FILE"
+    return 2
+  fi
 
   # Invoke agent with retry
   invoke_agent_with_retry "$trigger_file"
