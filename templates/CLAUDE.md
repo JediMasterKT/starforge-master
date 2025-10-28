@@ -56,6 +56,27 @@
 
 ---
 
+## 🚨 CRITICAL: Always Create PRs for Production Changes
+
+**EVERY change to `templates/` MUST go through a PR.**
+
+**Process:**
+1. Create feature branch
+2. Make changes to `templates/`
+3. Commit changes
+4. Push branch
+5. **CREATE PR IMMEDIATELY** with `--label "needs-review"`
+6. Wait for review
+
+**NEVER:**
+- ❌ Commit to main directly
+- ❌ Push changes without creating PR
+- ❌ Say "changes committed" without providing PR URL
+
+**If you commit changes without creating PR, YOU VIOLATED THIS RULE.**
+
+---
+
 ## 🚨 CRITICAL: PR Merge Rules
 
 **NEVER merge a PR without human approval.**
