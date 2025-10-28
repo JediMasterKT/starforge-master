@@ -868,6 +868,46 @@ case "$COMMAND" in
         # Source shared library for directory management functions
         source "$STARFORGE_DIR/templates/lib/starforge-common.sh"
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Version Detection and Migration
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        echo ""
+        echo "🔍 Detecting installed version..."
+
+        # Detect current version
+        INSTALLED_VERSION=$(detect_installed_version "$CLAUDE_DIR")
+
+        # Get latest version
+        LATEST_VERSION="unknown"
+        if [ -f "$STARFORGE_DIR/templates/VERSION" ]; then
+            LATEST_VERSION=$(jq -r '.version // "unknown"' "$STARFORGE_DIR/templates/VERSION" 2>/dev/null || echo
+"unknown")
+        fi
+
+        echo "   Installed: $INSTALLED_VERSION"
+        echo "   Latest: $LATEST_VERSION"
+        echo ""
+
+        # Run migration if needed
+        MIGRATION_NEEDED=false
+        case "$INSTALLED_VERSION" in
+            "pre-1.0.0")
+                MIGRATION_NEEDED=true
+                migrate_from_pre_1_0_0 "$TARGET_DIR" "$CLAUDE_DIR" "$STARFORGE_DIR"
+                ;;
+            "1.0.0")
+                if [ "$LATEST_VERSION" != "1.0.0" ]; then
+                    MIGRATION_NEEDED=true
+                    migrate_from_1_0_0 "$TARGET_DIR" "$CLAUDE_DIR" "$STARFORGE_DIR"
+                fi
+                ;;
+            *)
+                echo "✅ No migration needed"
+                echo ""
+                ;;
+        esac
+
         # Ensure complete directory structure before file operations
         echo ""
         ensure_directory_structure "$CLAUDE_DIR"
@@ -902,7 +942,27 @@ case "$COMMAND" in
 
         # Update protocol files
         echo -e "${INFO}Updating protocol files..."
-        cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+        
+        # CLAUDE.md - preserve if user has customized it
+        if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
+            # Check if file has been modified from template
+            if ! diff -q "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md" > /dev/null 2>&1; then
+                # User has customized - preserve and copy new version alongside
+                cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.new"
+                echo -e "${WARN} ${YELLOW}CLAUDE.md has user customizations - preserved${NC}"
+                echo -e "      ${YELLOW}New template saved as CLAUDE.md.new for manual merge${NC}"
+            else
+                # Unchanged - safe to update
+                cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+                echo -e "${CHECK} Updated CLAUDE.md"
+            fi
+        else
+            # New installation - just copy
+            cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+            echo -e "${CHECK} Added CLAUDE.md"
+        fi
+
+        # LEARNINGS.md - always safe to update (system file)
         cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
         echo -e "${CHECK} Updated protocol files"
 
@@ -929,7 +989,7 @@ case "$COMMAND" in
         echo ""
 
         # Validate installation
-        if ! validate_directory_structure "$CLAUDE_DIR"; then
+        if ! validate_installation "$CLAUDE_DIR"; then
             echo -e "${RED}❌ Directory structure validation failed${NC}"
             echo -e "${YELLOW}   Please report this issue with your .claude/ directory state${NC}"
         fi
