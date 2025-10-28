@@ -548,6 +548,70 @@ update_gitignore() {
     echo -e "   - Only PROJECT_CONTEXT.md and TECH_STACK.md are yours to edit"
 }
 
+# Prompt user to set up Discord notifications
+prompt_discord_setup() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}🔔 Discord Notifications${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "StarForge agents work autonomously and post updates to Discord."
+    echo -e "This lets you ${GREEN}walk away and get notified when they're done${NC}."
+    echo ""
+
+    # Check if Discord is already configured
+    if [ -f ".env" ] && grep -q "DISCORD_WEBHOOK_" ".env" 2>/dev/null; then
+        echo -e "${CHECK} Discord notifications already configured"
+        echo ""
+        return 0
+    fi
+
+    # Prompt user
+    read -p "Set up Discord notifications now? (y/n) [y]: " setup_discord
+    setup_discord=${setup_discord:-y}
+
+    if [ "$setup_discord" = "y" ] || [ "$setup_discord" = "Y" ]; then
+        echo ""
+
+        # Check if discord-setup.sh exists
+        local discord_setup="$STARFORGE_ROOT/templates/scripts/discord-setup.sh"
+        if [ ! -f "$discord_setup" ]; then
+            echo -e "${WARN} ${YELLOW}Discord setup script not found${NC}"
+            echo -e "   You can set up Discord later with: ${CYAN}starforge setup discord${NC}"
+            echo ""
+            return 1
+        fi
+
+        # Check dependencies
+        if ! command -v curl &> /dev/null || ! command -v jq &> /dev/null; then
+            echo -e "${WARN} ${YELLOW}Missing dependencies (curl, jq)${NC}"
+            echo -e "   You can set up Discord later with: ${CYAN}starforge setup discord${NC}"
+            echo ""
+            return 1
+        fi
+
+        # Run Discord setup wizard
+        bash "$discord_setup"
+        local setup_status=$?
+
+        if [ $setup_status -eq 0 ]; then
+            echo ""
+            echo -e "${CHECK} ${GREEN}Discord notifications configured!${NC}"
+        else
+            echo ""
+            echo -e "${WARN} ${YELLOW}Discord setup skipped or failed${NC}"
+            echo -e "   You can set up later with: ${CYAN}starforge setup discord${NC}"
+        fi
+        echo ""
+    else
+        echo ""
+        echo -e "${WARN} ${YELLOW}Skipping Discord setup${NC}"
+        echo -e "   You can set up later with: ${CYAN}starforge setup discord${NC}"
+        echo -e "   ${RED}Warning: Without notifications, you'll need to monitor agents manually${NC}"
+        echo ""
+    fi
+}
+
 # Main installation flow
 main() {
     check_prerequisites
@@ -602,6 +666,9 @@ main() {
     echo -e "${CHECK} ${GREEN}StarForge setup complete!${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+
+    # Prompt for Discord notifications setup
+    prompt_discord_setup
 
     if [ "$PROJECT_TYPE" = "existing" ]; then
         echo -e "${BLUE}📚 Next steps:${NC}"
