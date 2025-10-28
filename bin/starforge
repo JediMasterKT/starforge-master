@@ -352,6 +352,205 @@ show_detailed_diff() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
+# Doctor command validation functions
+check_directory_structure() {
+    local required_dirs=(
+        ".claude"
+        ".claude/lib"
+        ".claude/bin"
+        ".claude/agents"
+        ".claude/hooks"
+        ".claude/scripts"
+        ".claude/triggers"
+        ".claude/logs"
+    )
+
+    local missing_dirs=()
+
+    for dir in "${required_dirs[@]}"; do
+        if [ ! -d "$dir" ]; then
+            missing_dirs+=("$dir")
+        fi
+    done
+
+    if [ ${#missing_dirs[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Directory structure complete${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Directory structure incomplete${NC}"
+        echo "   Missing directories:"
+        for dir in "${missing_dirs[@]}"; do
+            echo "     - $dir"
+        done
+        return 1
+    fi
+}
+
+check_critical_files() {
+    local required_files=(
+        ".claude/CLAUDE.md"
+        ".claude/LEARNINGS.md"
+        ".claude/settings.json"
+        ".claude/hooks/stop.py"
+    )
+
+    local missing_files=()
+
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            missing_files+=("$file")
+        fi
+    done
+
+    if [ ${#missing_files[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Critical files present${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Critical files missing${NC}"
+        echo "   Missing files:"
+        for file in "${missing_files[@]}"; do
+            echo "     - $file"
+        done
+        return 1
+    fi
+}
+
+check_file_counts() {
+    local all_passed=true
+
+    # Check lib files
+    local expected_lib=11
+    local actual_lib=$(find .claude/lib -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_lib" -eq "$expected_lib" ]; then
+        echo -e "${GREEN}✅ Library files complete ($actual_lib/$expected_lib)${NC}"
+    else
+        echo -e "${RED}❌ Library files incomplete ($actual_lib/$expected_lib)${NC}"
+        # List what's expected vs what's found
+        echo "   Expected files in .claude/lib/:"
+        echo "     - discord-notify.sh, logger.sh, project-env.sh, router.sh"
+        echo "     - mcp-tools-*.sh (6 files), git-helpers.sh"
+        all_passed=false
+    fi
+
+    # Check bin files
+    local expected_bin=3
+    local actual_bin=$(find .claude/bin -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_bin" -eq "$expected_bin" ]; then
+        echo -e "${GREEN}✅ Bin files complete ($actual_bin/$expected_bin)${NC}"
+    else
+        echo -e "${RED}❌ Bin files incomplete ($actual_bin/$expected_bin)${NC}"
+        echo "   Expected: daemon.sh, daemon-runner.sh, update-helpers.sh"
+        all_passed=false
+    fi
+
+    # Check agent definitions
+    local expected_agents=5
+    local actual_agents=$(find .claude/agents -maxdepth 1 -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_agents" -eq "$expected_agents" ]; then
+        echo -e "${GREEN}✅ Agent definitions present ($actual_agents/$expected_agents)${NC}"
+    else
+        echo -e "${RED}❌ Agent definitions incomplete ($actual_agents/$expected_agents)${NC}"
+        echo "   Expected: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent"
+        all_passed=false
+    fi
+
+    [ "$all_passed" = true ] && return 0 || return 1
+}
+
+check_json_config() {
+    local settings_file=".claude/settings.json"
+
+    # Check file exists (redundant with check_critical_files but defensive)
+    if [ ! -f "$settings_file" ]; then
+        echo -e "${RED}❌ settings.json not found${NC}"
+        return 1
+    fi
+
+    # Check if valid JSON
+    if ! jq empty "$settings_file" 2>/dev/null; then
+        echo -e "${RED}❌ settings.json is not valid JSON${NC}"
+        echo "   Run 'jq . $settings_file' to see parse errors"
+        return 1
+    fi
+
+    # Check if hooks.Stop configuration exists
+    local has_stop_hook=$(jq -r '.hooks.Stop // empty' "$settings_file" 2>/dev/null)
+
+    if [ -z "$has_stop_hook" ]; then
+        echo -e "${RED}❌ JSON configuration incomplete${NC}"
+        echo "   Missing: hooks.Stop configuration"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ JSON configuration valid${NC}"
+    return 0
+}
+
+check_permissions() {
+    local files_to_check=()
+    local non_executable=()
+
+    # Collect all files that should be executable
+    files_to_check+=(".claude/hooks/stop.py")
+
+    # Add all .sh files in scripts/, lib/, bin/
+    while IFS= read -r file; do
+        files_to_check+=("$file")
+    done < <(find .claude/scripts .claude/lib .claude/bin -name "*.sh" 2>/dev/null)
+
+    # Check each file for executable permission
+    for file in "${files_to_check[@]}"; do
+        if [ ! -x "$file" ]; then
+            non_executable+=("$file")
+        fi
+    done
+
+    if [ ${#non_executable[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Permissions correct${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Permission errors found${NC}"
+        echo "   Non-executable files:"
+        for file in "${non_executable[@]}"; do
+            echo "     - $file"
+        done
+        echo ""
+        echo "   Fix with: chmod +x <file>"
+        return 1
+    fi
+}
+
+run_doctor_checks() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}🔍 StarForge Doctor${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    local all_passed=true
+
+    # Run all validation checks
+    check_directory_structure || all_passed=false
+    check_critical_files || all_passed=false
+    check_file_counts || all_passed=false
+    check_json_config || all_passed=false
+    check_permissions || all_passed=false
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ "$all_passed" = true ]; then
+        echo -e "${GREEN}🎉 All systems go! StarForge is ready.${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}⚠️  Installation incomplete. Run 'starforge update' to fix.${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        return 1
+    fi
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -725,6 +924,17 @@ case "$COMMAND" in
         fi
         ;;
 
+    doctor)
+        # Run health checks
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        run_doctor_checks
+        ;;
+
     logs)
         # View and manage logs
         if [ ! -d ".claude" ]; then
@@ -918,6 +1128,10 @@ case "$COMMAND" in
         echo ""
         echo -e "  ${YELLOW}starforge status${NC}"
         echo "    Show current agent status, worktrees, and GitHub queue"
+        echo ""
+        echo -e "  ${YELLOW}starforge doctor${NC}"
+        echo "    Run health checks on StarForge installation"
+        echo "    Validates directory structure, files, configs, and permissions"
         echo ""
         echo -e "  ${YELLOW}starforge help${NC}"
         echo "    Show this help message"
