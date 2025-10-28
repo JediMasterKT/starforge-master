@@ -436,6 +436,11 @@ invoke_agent_parallel() {
   # Spawn background process
   log_event "SPAWN" "Starting $to_agent in background ($from_agent → $to_agent: $action)"
 
+  # Send agent start notification (if Discord configured)
+  if type send_agent_start_notification &>/dev/null; then
+    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" &
+  fi
+
   (
     # Reserve agent slot immediately
     mark_agent_busy "$to_agent" "$$" "$ticket"
@@ -576,8 +581,21 @@ monitor_running_agents() {
 
         if [ $exit_code -eq 0 ]; then
           log_event "FINISH" "$agent completed successfully (PID: $agent_pid)"
+
+          # Send success notification (if Discord configured)
+          if type send_agent_complete_notification &>/dev/null; then
+            # Extract ticket from agent slot metadata
+            local ticket=$(jq -r ".\"$agent\".ticket // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            send_agent_complete_notification "$agent" "0" "0" "parallel-task" "$ticket" &
+          fi
         else
           log_event "FINISH" "$agent failed (PID: $agent_pid, exit: $exit_code)"
+
+          # Send error notification (if Discord configured)
+          if type send_agent_error_notification &>/dev/null; then
+            local ticket=$(jq -r ".\"$agent\".ticket // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            send_agent_error_notification "$agent" "$exit_code" "0" "$ticket" &
+          fi
         fi
 
         # Release slot

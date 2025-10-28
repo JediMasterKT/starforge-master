@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # StarForge CLI - Portable AI Development Team
 # Version: 1.0.0
 
@@ -1205,6 +1205,58 @@ case "$COMMAND" in
         fi
 
         run_doctor_checks
+        ;;
+
+    setup)
+        # Setup integrations and configurations
+        SUBCOMMAND="${1:-help}"
+        shift || true
+
+        case "$SUBCOMMAND" in
+            discord)
+                # Setup Discord integration
+                echo ""
+                # Check if discord-setup.sh exists
+                DISCORD_SETUP="$STARFORGE_DIR/templates/scripts/discord-setup.sh"
+                if [ ! -f "$DISCORD_SETUP" ]; then
+                    echo -e "${RED}❌ Discord setup script not found${NC}"
+                    echo -e "   Expected: $DISCORD_SETUP"
+                    echo -e "   Run: starforge update"
+                    exit 1
+                fi
+
+                # Check dependencies
+                if ! command -v curl &> /dev/null; then
+                    echo -e "${RED}❌ curl is required but not installed${NC}"
+                    exit 1
+                fi
+
+                if ! command -v jq &> /dev/null; then
+                    echo -e "${RED}❌ jq is required but not installed${NC}"
+                    echo -e "   Install: brew install jq"
+                    exit 1
+                fi
+
+                # Run Discord setup wizard
+                bash "$DISCORD_SETUP"
+                ;;
+
+            help|*)
+                # Show setup help
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}StarForge Setup Commands${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "  ${YELLOW}starforge setup discord${NC}"
+                echo "    Set up Discord notifications for agent activity"
+                echo "    Creates channels, webhooks, and .env configuration"
+                echo "    Time: ~2 minutes"
+                echo ""
+                echo -e "  ${YELLOW}starforge setup help${NC}"
+                echo "    Show this help message"
+                echo ""
+                ;;
+        esac
         ;;
 
     logs)
