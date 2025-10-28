@@ -924,7 +924,27 @@ case "$COMMAND" in
 
         # Update protocol files
         echo -e "${INFO}Updating protocol files..."
-        cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+        
+        # CLAUDE.md - preserve if user has customized it
+        if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
+            # Check if file has been modified from template
+            if ! diff -q "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md" > /dev/null 2>&1; then
+                # User has customized - preserve and copy new version alongside
+                cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.new"
+                echo -e "${WARN} ${YELLOW}CLAUDE.md has user customizations - preserved${NC}"
+                echo -e "      ${YELLOW}New template saved as CLAUDE.md.new for manual merge${NC}"
+            else
+                # Unchanged - safe to update
+                cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+                echo -e "${CHECK} Updated CLAUDE.md"
+            fi
+        else
+            # New installation - just copy
+            cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+            echo -e "${CHECK} Added CLAUDE.md"
+        fi
+
+        # LEARNINGS.md - always safe to update (system file)
         cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
         echo -e "${CHECK} Updated protocol files"
 
