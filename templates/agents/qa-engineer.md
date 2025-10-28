@@ -532,9 +532,15 @@ REPORT
   # Leave approval comment (can't use --approve due to GitHub self-approval limitation)
   gh pr comment $PR_NUMBER --body "$REPORT"
 
-  # Update labels: remove needs-review, add qa-approved
+  # CRITICAL: Manage PR labels based on verdict
+  # This controls the 'Require QA Review' GitHub status check
+  #
+  # APPROVED verdict:
+  # - Remove 'needs-review' label → unblocks merge (status check passes)
+  # - Add 'qa-approved' label → signals approval to orchestrator/human
   gh pr edit $PR_NUMBER --remove-label "needs-review" --add-label "qa-approved"
   echo "✅ Updated PR labels: needs-review → qa-approved"
+  echo "   Status check will now PASS (merge unblocked)"
 
   echo "✅ PR #$PR_NUMBER APPROVED (orchestrator/human will merge)"
 
@@ -651,9 +657,58 @@ ISSUES
   # Request changes
   gh pr review $PR_NUMBER --request-changes --body "$ISSUES"
 
-  # Update labels: remove needs-review, add qa-declined
-  gh pr edit $PR_NUMBER --remove-label "needs-review" --add-label "qa-declined"
-  echo "✅ Updated PR labels: needs-review → qa-declined"
+  # CRITICAL: Manage PR labels based on verdict
+  # This controls the 'Require QA Review' GitHub status check
+  #
+  # Determine severity of issues to choose correct label:
+  # - NEEDS CHANGES: Issues that can be fixed, PR can be salvaged
+  #   → Add 'qa-needs-changes' label
+  # - BLOCKED: Critical issues, architectural problems, security risks
+  #   → Add 'qa-blocked' label instead
+  #
+  # Both verdicts:
+  # - Keep 'needs-review' label → keeps merge blocked (status check fails)
+  # - Add appropriate severity label → signals issue type to junior-dev/orchestrator
+  #
+  # NOTE: We do NOT remove 'needs-review' because the PR is not approved
+  # The status check will continue to FAIL until issues are fixed and QA re-approves
+
+  # Determine if this is BLOCKED or NEEDS CHANGES
+  # Check for critical issues in gate failures
+  IS_BLOCKED=false
+
+  # Critical failures that warrant BLOCKED label:
+  # - Security issues (Gate 4)
+  # - Multiple gate failures (3+)
+  if [ "$GATE4_STATUS" = "FAILED" ]; then
+    IS_BLOCKED=true
+    echo "🚨 Security issues found - marking as BLOCKED"
+  else
+    # Count failed gates
+    FAILED_COUNT=0
+    for GATE in "$GATE1_STATUS" "$GATE2_STATUS" "$GATE3_STATUS" "$GATE4_STATUS" "$GATE5_STATUS"; do
+      [ "$GATE" = "FAILED" ] && FAILED_COUNT=$((FAILED_COUNT + 1))
+    done
+
+    if [ $FAILED_COUNT -ge 3 ]; then
+      IS_BLOCKED=true
+      echo "🚨 Multiple critical failures ($FAILED_COUNT gates) - marking as BLOCKED"
+    fi
+  fi
+
+  if [ "$IS_BLOCKED" = true ]; then
+    # BLOCKED: Critical issues requiring major rework or architectural changes
+    gh pr edit $PR_NUMBER --add-label "qa-blocked"
+    echo "✅ Added 'qa-blocked' label to PR #$PR_NUMBER"
+    echo "   🚨 CRITICAL ISSUES - DO NOT MERGE"
+  else
+    # NEEDS CHANGES: Issues can be fixed with revisions
+    gh pr edit $PR_NUMBER --add-label "qa-needs-changes"
+    echo "✅ Added 'qa-needs-changes' label to PR #$PR_NUMBER"
+  fi
+
+  echo "   'needs-review' label kept → status check remains FAILED (merge blocked)"
+  echo "   Junior-dev must fix issues and resubmit"
 
   # Comment on ticket
   gh issue comment $TICKET \
