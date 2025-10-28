@@ -26,3 +26,10 @@ __pycache__/
 # Environment files (but keep template)
 .env
 !.env.example
+
+# Development artifacts - DO NOT COMMIT
+docs/PR-*-REVIEW.md
+docs/PR-*-QA*.md
+docs/*-test-*.md
+docs/daemon-*.md
+docs/phase*.md
