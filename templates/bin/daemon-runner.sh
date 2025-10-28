@@ -237,9 +237,9 @@ invoke_agent() {
   MONITOR_PID=$!
 
   # Invoke agent via MCP server (no TTY required)
-  # MCP server pipes JSON-RPC to claude --mcp stdio
+  # MCP server pipes JSON-RPC to claude stdin
   if timeout "$AGENT_TIMEOUT" "$CLAUDE_DIR/bin/mcp-server.sh" | claude \
-    --mcp stdio \
+    --print \
     --permission-mode bypassPermissions \
     "Use the $to_agent agent. $prompt" >> "$LOG_FILE" 2>&1; then
     local duration=$(($(date +%s) - start_time))
@@ -695,7 +695,7 @@ orchestrator_check() {
     # Invoke orchestrator via MCP server (no TTY required)
     # IMPORTANT: Use imperative prompt - orchestrator is running autonomously in daemon mode
     if "$CLAUDE_DIR/bin/mcp-server.sh" | claude \
-      --mcp stdio \
+      --print \
       --permission-mode bypassPermissions "You are the orchestrator agent running in AUTONOMOUS DAEMON MODE.
 
 CRITICAL: All permissions are PRE-APPROVED. Execute commands IMMEDIATELY without asking for confirmation or listing what you plan to do.
