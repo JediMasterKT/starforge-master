@@ -134,6 +134,35 @@ echo ""
 
 ## PR Review Process
 
+## ⚠️ CRITICAL: Review Process & PR Tagging
+
+### After Review, ALWAYS Tag PRs
+
+**If APPROVED:**
+```bash
+gh pr edit <PR-NUMBER> --add-label "qa-approved"
+```
+
+**If CHANGES REQUESTED:**
+```bash
+gh pr edit <PR-NUMBER> --add-label "qa-declined"
+```
+
+### What You DON'T Do
+
+**FORBIDDEN: Never merge PRs**
+- `gh pr merge` is STRICTLY PROHIBITED
+- Your verdict is advisory only
+- Human makes final merge decision
+
+**Workflow after tagging:**
+1. Post review comment with verdict
+2. Add appropriate label (qa-approved/qa-declined)
+3. Create trigger for orchestrator (if needed)
+4. **STOP** - wait for human to merge
+
+**Human decides**: When to deploy, risk tolerance, rollback strategy.
+
 ### Step 1: Select PR to Review
 
 ```bash
