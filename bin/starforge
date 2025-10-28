@@ -1041,6 +1041,10 @@ case "$COMMAND" in
         echo -e "  ${YELLOW}starforge status${NC}"
         echo "    Show current agent status, worktrees, and GitHub queue"
         echo ""
+        echo -e "  ${YELLOW}starforge queue list [agent] [--json]${NC}"
+        echo "    List pending tasks in agent queues"
+        echo "    Examples: starforge queue list (all), starforge queue list tpm"
+        echo ""
         echo -e "  ${YELLOW}starforge help${NC}"
         echo "    Show this help message"
         echo ""
@@ -1074,6 +1078,201 @@ case "$COMMAND" in
         echo -e "${GREEN}DOCUMENTATION:${NC}"
         echo "  https://github.com/JediMasterKT/starforge-master"
         echo ""
+        ;;
+
+    queue)
+        # Queue management commands
+        QUEUE_SUBCOMMAND="${1:-help}"
+        shift || true
+
+        case "$QUEUE_SUBCOMMAND" in
+            list)
+                # List queue tasks
+                AGENT_NAME="$1"
+                JSON_OUTPUT=false
+
+                # Check for --json flag
+                if [ "$1" = "--json" ] || [ "$2" = "--json" ]; then
+                    JSON_OUTPUT=true
+                    if [ "$1" = "--json" ]; then
+                        AGENT_NAME=""
+                    fi
+                fi
+
+                # Check if .claude exists
+                if [ ! -d ".claude" ]; then
+                    echo -e "${RED}❌ StarForge not installed in this project${NC}"
+                    echo -e "   Run: starforge install"
+                    exit 1
+                fi
+
+                QUEUES_DIR=".claude/queues"
+
+                if [ ! -d "$QUEUES_DIR" ]; then
+                    echo -e "${RED}❌ Queue infrastructure not found${NC}"
+                    echo -e "   Queues directory does not exist: $QUEUES_DIR"
+                    exit 1
+                fi
+
+                # Function to list a single queue
+                list_queue() {
+                    local agent="$1"
+                    local queue_dir="$QUEUES_DIR/$agent/pending"
+
+                    if [ ! -d "$queue_dir" ]; then
+                        if [ "$JSON_OUTPUT" = true ]; then
+                            echo "{\"agent\":\"$agent\",\"status\":\"not_found\",\"tasks\":[]}"
+                        else
+                            echo -e "${YELLOW}Queue not found: $agent${NC}"
+                        fi
+                        return
+                    fi
+
+                    local task_count=$(ls "$queue_dir"/*.json 2>/dev/null | wc -l | tr -d ' ')
+
+                    if [ "$task_count" -eq 0 ]; then
+                        if [ "$JSON_OUTPUT" = true ]; then
+                            echo "{\"agent\":\"$agent\",\"task_count\":0,\"tasks\":[]}"
+                        else
+                            echo -e "${BLUE}Queue: $agent${NC}"
+                            echo "  No pending tasks"
+                            echo ""
+                        fi
+                        return
+                    fi
+
+                    # Get task files sorted by timestamp (newest first from ls -t, then reverse for oldest first)
+                    local task_files_newest=($(ls -t "$queue_dir"/*.json 2>/dev/null))
+
+                    # Reverse array to get oldest first (portable way - works on both Linux and macOS)
+                    local task_files=()
+                    for (( i=${#task_files_newest[@]}-1; i>=0; i-- )); do
+                        task_files+=("${task_files_newest[i]}")
+                    done
+
+                    local oldest_file="${task_files[0]}"
+                    local newest_file="${task_files[$((${#task_files[@]}-1))]}"
+
+                    # Get timestamps
+                    local oldest_time=$(stat -f %m "$oldest_file" 2>/dev/null || stat -c %Y "$oldest_file" 2>/dev/null)
+                    local newest_time=$(stat -f %m "$newest_file" 2>/dev/null || stat -c %Y "$newest_file" 2>/dev/null)
+                    local current_time=$(date +%s)
+
+                    # Calculate age
+                    local oldest_age=$((current_time - oldest_time))
+                    local oldest_age_str=$(format_age $oldest_age)
+
+                    if [ "$JSON_OUTPUT" = true ]; then
+                        # JSON output
+                        echo -n "{\"agent\":\"$agent\",\"task_count\":$task_count,\"oldest_age_seconds\":$oldest_age,\"tasks\":["
+
+                        local first=true
+                        for task_file in "${task_files[@]}"; do
+                            if [ "$first" = true ]; then
+                                first=false
+                            else
+                                echo -n ","
+                            fi
+                            cat "$task_file"
+                        done
+                        echo "]}"
+                    else
+                        # Human-readable output
+                        echo -e "${BLUE}Queue: $agent${NC}"
+                        echo "  Task count: $task_count"
+                        echo "  Oldest task: $(basename "$oldest_file" .json) (age: $oldest_age_str)"
+                        echo "  Newest task: $(basename "$newest_file" .json)"
+                        echo ""
+
+                        # List all tasks
+                        echo "  Tasks:"
+                        for task_file in "${task_files[@]}"; do
+                            local task_id=$(jq -r '.id' "$task_file" 2>/dev/null || basename "$task_file" .json)
+                            local task_action=$(jq -r '.action' "$task_file" 2>/dev/null || echo "unknown")
+                            echo "    - $task_id ($task_action)"
+                        done
+                        echo ""
+                    fi
+                }
+
+                # Helper function to format age
+                format_age() {
+                    local seconds=$1
+                    local minutes=$((seconds / 60))
+                    local hours=$((minutes / 60))
+                    local days=$((hours / 24))
+
+                    if [ $days -gt 0 ]; then
+                        echo "${days}d ${hours % 24}h"
+                    elif [ $hours -gt 0 ]; then
+                        echo "${hours}h ${minutes % 60}m"
+                    elif [ $minutes -gt 0 ]; then
+                        echo "${minutes}m ${seconds % 60}s"
+                    else
+                        echo "${seconds}s"
+                    fi
+                }
+
+                # List specific queue or all queues
+                if [ -n "$AGENT_NAME" ] && [ "$AGENT_NAME" != "--json" ]; then
+                    list_queue "$AGENT_NAME"
+                else
+                    # List all queues
+                    if [ "$JSON_OUTPUT" = true ]; then
+                        echo -n "["
+                        first=true
+                        for queue_path in "$QUEUES_DIR"/*/pending; do
+                            if [ -d "$queue_path" ]; then
+                                agent=$(basename "$(dirname "$queue_path")")
+                                if [ "$first" = true ]; then
+                                    first=false
+                                else
+                                    echo -n ","
+                                fi
+                                list_queue "$agent"
+                            fi
+                        done
+                        echo "]"
+                    else
+                        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                        echo -e "${GREEN}📋 StarForge Queue Status${NC}"
+                        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                        echo ""
+
+                        for queue_path in "$QUEUES_DIR"/*/pending; do
+                            if [ -d "$queue_path" ]; then
+                                agent=$(basename "$(dirname "$queue_path")")
+                                list_queue "$agent"
+                            fi
+                        done
+                    fi
+                fi
+                ;;
+
+            help|--help|-h)
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${GREEN}📋 StarForge Queue Commands${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "${YELLOW}starforge queue list${NC}"
+                echo "  List all agent queues and their pending tasks"
+                echo ""
+                echo -e "${YELLOW}starforge queue list <agent>${NC}"
+                echo "  List pending tasks for a specific agent"
+                echo "  Example: starforge queue list tpm"
+                echo ""
+                echo -e "${YELLOW}starforge queue list --json${NC}"
+                echo "  Output queue information in JSON format"
+                echo ""
+                ;;
+
+            *)
+                echo -e "${RED}❌ Unknown queue command: $QUEUE_SUBCOMMAND${NC}"
+                echo ""
+                echo "Run 'starforge queue help' for available commands"
+                exit 1
+                ;;
+        esac
         ;;
 
     *)
