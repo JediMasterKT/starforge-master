@@ -507,6 +507,29 @@ detect_active_agents() {
     return 0  # Active agents found
 }
 
+run_doctor_checks() {
+    echo -e "${CYAN}🔍 Running StarForge Doctor...${NC}"
+    echo ""
+
+    local all_passed=true
+
+    # Placeholder for validation checks (other tasks will add these)
+    # check_directory_structure || all_passed=false
+    # check_critical_files || all_passed=false
+    # check_file_counts || all_passed=false
+    # check_json_config || all_passed=false
+    # check_permissions || all_passed=false
+
+    echo ""
+    if [ "$all_passed" = true ]; then
+        echo -e "${GREEN}🎉 All systems go! StarForge is ready.${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}⚠️  Installation incomplete. Run 'starforge update' to fix.${NC}"
+        return 1
+    fi
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -748,6 +771,18 @@ case "$COMMAND" in
 
         # Route to daemon lifecycle manager in user's .claude/bin/
         "./.claude/bin/daemon.sh" "$@"
+        ;;
+
+    doctor)
+        # TODO: Future enhancement - Add automation support for health checks
+        # Planned features for v1.1+:
+        #   - --quiet flag (silent on success, output only on failure)
+        #   - --json flag (machine-readable output for CI/CD)
+        #   - --log flag (write results to .claude/logs/doctor.log)
+        #   - CRON job integration for periodic health checks
+        #   - Discord/webhook notifications on failures
+
+        run_doctor_checks
         ;;
 
     use)
@@ -1121,6 +1156,10 @@ case "$COMMAND" in
         echo ""
         echo -e "  ${YELLOW}starforge status${NC}"
         echo "    Show current agent status, worktrees, and GitHub queue"
+        echo ""
+        echo -e "  ${YELLOW}starforge doctor${NC}"
+        echo "    Run diagnostic checks to verify StarForge installation"
+        echo "    Validates directory structure, critical files, and configuration"
         echo ""
         echo -e "  ${YELLOW}starforge help${NC}"
         echo "    Show this help message"
