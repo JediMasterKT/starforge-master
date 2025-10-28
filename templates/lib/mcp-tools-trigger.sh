@@ -143,11 +143,18 @@ EOF
 #
 # Creates a trigger file for agent handoffs with validation and atomic write.
 # Auto-populates from_agent from STARFORGE_AGENT_ID environment variable.
+# Auto-generates command and message fields required by stop hook.
 #
 # Args:
 #   $1 - to_agent (required): Target agent to receive trigger
-#   $2 - action (required): Action for target agent to perform
+#   $2 - action (required): Action for target agent to perform (e.g., "review_pr")
 #   $3 - context (optional): JSON object with metadata (default: {})
+#
+# Generated Fields:
+#   - message: Auto-generated from action (e.g., "review_pr" → "Review Pr")
+#   - command: Auto-generated as "Use <agent>. <message>." for human invocation
+#   - from_agent: Auto-populated from STARFORGE_AGENT_ID environment variable
+#   - timestamp: Auto-generated ISO 8601 UTC timestamp
 #
 # Returns:
 #   JSON object with:
@@ -160,10 +167,16 @@ EOF
 #
 # Examples:
 #   starforge_create_trigger "qa-engineer" "review_pr" '{"pr": 42, "ticket": 100}'
-#   # => {"trigger_file": "/path/.claude/triggers/qa-engineer-review_pr-1234567890.trigger", "trigger_id": "qa-engineer-review_pr-1234567890"}
+#   # => Creates trigger with:
+#   #    - message: "Review Pr"
+#   #    - command: "Use qa-engineer. Review Pr."
+#   #    - context: {"pr": 42, "ticket": 100}
 #
 #   starforge_create_trigger "orchestrator" "assign_tickets" '{}'
-#   # => {"trigger_file": "/path/.claude/triggers/orchestrator-assign_tickets-1234567891.trigger", "trigger_id": "orchestrator-assign_tickets-1234567891"}
+#   # => Creates trigger with:
+#   #    - message: "Assign Tickets"
+#   #    - command: "Use orchestrator. Assign Tickets."
+#   #    - context: {}
 #
 starforge_create_trigger() {
   local to_agent="$1"
