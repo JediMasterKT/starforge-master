@@ -881,8 +881,7 @@ case "$COMMAND" in
         # Get latest version
         LATEST_VERSION="unknown"
         if [ -f "$STARFORGE_DIR/templates/VERSION" ]; then
-            LATEST_VERSION=$(jq -r '.version // "unknown"' "$STARFORGE_DIR/templates/VERSION" 2>/dev/null || echo
-"unknown")
+            LATEST_VERSION=$(jq -r '.version // "unknown"' "$STARFORGE_DIR/templates/VERSION" 2>/dev/null || echo "unknown")
         fi
 
         echo "   Installed: $INSTALLED_VERSION"
