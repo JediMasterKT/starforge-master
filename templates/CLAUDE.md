@@ -2,19 +2,21 @@
 
 ## 🚨 CRITICAL: File Modification Rules for main-claude
 
-**When improving StarForge itself (daemon, triggers, agents, helpers, scripts):**
+**When improving StarForge itself (daemon, triggers, agents, helpers, scripts, CLI):**
 
 ✅ **ALWAYS modify:** `templates/` directory
 ❌ **NEVER modify:** `.claude/` directory (except CLAUDE.md, hooks, and user config)
+❌ **NEVER modify:** `bin/starforge` directly (it's a wrapper - modify `templates/bin/starforge`)
 
 **Why:**
-- `templates/` = Source of truth for StarForge system files (what gets deployed to users)
+- `templates/` = Source of truth for ALL StarForge code (including CLI)
 - `.claude/` = Deployed instance (read-only for StarForge development)
-- Users run `starforge update` to deploy from `templates/` → `.claude/`
+- `bin/starforge` = Wrapper that points to `templates/bin/starforge`
+- Users run `starforge update` to deploy from `templates/` → `.claude/` AND `~/.local/bin/`
 
 **BEFORE using Write/Edit tool, ask yourself:**
 
-1. **Is this a StarForge system improvement?** (daemon, agents, triggers, helpers, notification system)
+1. **Is this a StarForge system improvement?** (daemon, agents, triggers, helpers, notification system, CLI)
    → Modify `templates/bin/`, `templates/lib/`, `templates/scripts/`, `templates/agents/`
 
 2. **Is this user configuration or project-specific?** (hooks, custom scripts, project files)
@@ -24,10 +26,11 @@
 - Fixing daemon-runner.sh → `templates/bin/daemon-runner.sh` ✅
 - Adding Discord notifications → `templates/lib/discord-notify.sh` ✅
 - Fixing trigger helpers → `templates/scripts/trigger-helpers.sh` ✅
+- **Fixing StarForge CLI** → `templates/bin/starforge` ✅
 - User's custom hook → `.claude/hooks/user-prompt-submit.sh` ✅
 - This CLAUDE.md file → `.claude/CLAUDE.md` ✅
 
-**If you modify `.claude/bin/`, `.claude/lib/`, or `.claude/scripts/` for StarForge improvements, YOU MADE A MISTAKE. Stop and copy changes to `templates/` instead.**
+**If you modify `.claude/bin/`, `.claude/lib/`, `.claude/scripts/`, or `bin/starforge` for StarForge improvements, YOU MADE A MISTAKE. Stop and copy changes to `templates/` instead.**
 
 ---
 

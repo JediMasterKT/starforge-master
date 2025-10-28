@@ -1,0 +1,1622 @@
+#!/usr/bin/env bash
+# StarForge CLI - Portable AI Development Team
+# Version: 1.0.0
+
+# CRITICAL: Check Bash version FIRST
+# macOS ships with Bash 3.2 (from 2007) which lacks required features
+BASH_VERSION_REQUIRED="4.0"
+BASH_VERSION_CURRENT="${BASH_VERSION%%[^0-9.]*}"
+
+version_compare() {
+    local ver1=$1
+    local ver2=$2
+
+    # Split versions into array
+    IFS='.' read -ra VER1 <<< "$ver1"
+    IFS='.' read -ra VER2 <<< "$ver2"
+
+    # Compare major version
+    if [ "${VER1[0]}" -lt "${VER2[0]}" ]; then
+        return 1  # ver1 < ver2
+    elif [ "${VER1[0]}" -gt "${VER2[0]}" ]; then
+        return 0  # ver1 > ver2
+    fi
+
+    # Major versions equal, compare minor
+    if [ "${VER1[1]:-0}" -lt "${VER2[1]:-0}" ]; then
+        return 1  # ver1 < ver2
+    fi
+
+    return 0  # ver1 >= ver2
+}
+
+if ! version_compare "$BASH_VERSION_CURRENT" "$BASH_VERSION_REQUIRED"; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "❌ Bash version too old: $BASH_VERSION_CURRENT"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "StarForge requires Bash $BASH_VERSION_REQUIRED or higher."
+    echo "Your system has Bash $BASH_VERSION_CURRENT."
+    echo ""
+    echo "Upgrade Bash:"
+    echo ""
+
+    # Platform-specific instructions
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "  macOS (via Homebrew):"
+        echo "    brew install bash"
+        echo "    # Then restart your terminal"
+        echo ""
+        echo "  Check new version:"
+        echo "    /usr/local/bin/bash --version"
+        echo ""
+        echo "  Update default shell (optional):"
+        echo "    sudo bash -c 'echo /usr/local/bin/bash >> /etc/shells'"
+        echo "    chsh -s /usr/local/bin/bash"
+    else
+        echo "  Linux:"
+        echo "    sudo apt-get install bash  # Debian/Ubuntu"
+        echo "    sudo yum install bash      # RHEL/Fedora"
+        echo ""
+        echo "  Check version:"
+        echo "    bash --version"
+    fi
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    exit 1
+fi
+
+# Continue with rest of script...
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Icons
+CHECK="✅"
+WARN="⚠️ "
+INFO="ℹ️ "
+
+# Get StarForge installation directory
+STARFORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Permission checking function
+check_permissions() {
+    local target_dir="$1"
+    local operation="${2:-install}"  # install or update
+
+    echo -e "${BLUE}Checking permissions...${NC}"
+    echo ""
+
+    # Check if directory exists and is writable
+    if [ -d "$target_dir" ]; then
+        if [ ! -w "$target_dir" ]; then
+            echo -e "${RED}❌ No write permission: $target_dir${NC}"
+            echo ""
+            echo "Current permissions:"
+            ls -ld "$target_dir"
+            echo ""
+            echo "Fix with:"
+            echo -e "  ${YELLOW}sudo chown -R \$USER $target_dir${NC}"
+            echo "  or"
+            echo -e "  ${YELLOW}chmod u+w $target_dir${NC}"
+            echo ""
+            return 1
+        fi
+    else
+        # Check parent directory
+        local parent_dir=$(dirname "$target_dir")
+        if [ ! -w "$parent_dir" ]; then
+            echo -e "${RED}❌ No write permission: $parent_dir${NC}"
+            echo ""
+            echo "Cannot create $target_dir in non-writable directory"
+            echo ""
+            echo "Current permissions:"
+            ls -ld "$parent_dir"
+            echo ""
+            echo "Fix with:"
+            echo -e "  ${YELLOW}sudo chown -R \$USER $parent_dir${NC}"
+            echo ""
+            return 1
+        fi
+    fi
+
+    # Check git worktree permissions (if .git exists)
+    if [ -d ".git" ] || [ -f ".git" ]; then
+        local git_dir=$(git rev-parse --git-common-dir 2>/dev/null)
+        if [ -n "$git_dir" ] && [ ! -w "$git_dir" ]; then
+            echo -e "${RED}❌ No write permission: $git_dir${NC}"
+            echo ""
+            echo "Cannot create git worktrees without write access"
+            echo ""
+            echo "Fix with:"
+            echo -e "  ${YELLOW}sudo chown -R \$USER $git_dir${NC}"
+            echo ""
+            return 1
+        fi
+    fi
+
+    echo -e "${GREEN}✓ Permissions OK${NC}"
+    echo ""
+    return 0
+}
+
+# Backup functions
+create_backup() {
+    local claude_dir="$1"
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local backup_dir="$claude_dir/backups/update-$timestamp"
+
+    echo -e "${INFO}Creating backup..."
+
+    # Create backup directory structure
+    mkdir -p "$backup_dir"/{agents,scripts,hooks}
+
+    # Backup files that will be replaced
+    cp "$claude_dir/agents"/*.md "$backup_dir/agents/" 2>/dev/null || true
+    cp "$claude_dir/scripts"/*.sh "$backup_dir/scripts/" 2>/dev/null || true
+    cp "$claude_dir/hooks"/*.sh "$backup_dir/hooks/" 2>/dev/null || true
+    cp "$claude_dir/settings.json" "$backup_dir/" 2>/dev/null || true
+    cp "$claude_dir/CLAUDE.md" "$backup_dir/" 2>/dev/null || true
+    cp "$claude_dir/LEARNINGS.md" "$backup_dir/" 2>/dev/null || true
+    cp "$claude_dir/STARFORGE_VERSION" "$backup_dir/" 2>/dev/null || true
+
+    # Count backed up files
+    local files_count=$(find "$backup_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+    # Get pre-update version
+    local pre_version="unknown"
+    if [ -f "$claude_dir/STARFORGE_VERSION" ]; then
+        pre_version=$(jq -r '.version // "unknown"' "$claude_dir/STARFORGE_VERSION" 2>/dev/null || echo "unknown")
+    fi
+
+    # Create manifest
+    cat > "$backup_dir/manifest.json" << MEOF
+{
+  "backup_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "pre_update_version": "$pre_version",
+  "files_backed_up": $files_count
+}
+MEOF
+
+    # Store backup path
+    echo "$backup_dir" > "$claude_dir/.last-backup"
+
+    echo -e "${CHECK} Backup created: update-$timestamp ($files_count files)"
+
+    # Cleanup old backups
+    cleanup_old_backups "$claude_dir"
+}
+
+cleanup_old_backups() {
+    local claude_dir="$1"
+    local backup_base="$claude_dir/backups"
+
+    # Keep only the last 5 backups
+    if [ -d "$backup_base" ]; then
+        local backup_count=$(find "$backup_base" -maxdepth 1 -type d -name "update-*" 2>/dev/null | wc -l | tr -d ' ')
+
+        if [ "$backup_count" -gt 5 ]; then
+            # Remove oldest backups, keep newest 5
+            find "$backup_base" -maxdepth 1 -type d -name "update-*" -print0 2>/dev/null | \
+                xargs -0 ls -td 2>/dev/null | \
+                tail -n +6 | \
+                xargs rm -rf 2>/dev/null || true
+
+            local removed=$((backup_count - 5))
+            echo -e "${INFO}Cleaned up $removed old backup(s)"
+        fi
+    fi
+}
+
+# Normalize paths in settings.json for accurate comparison
+normalize_settings_json() {
+    local file="$1"
+
+    # Replace project-specific paths with placeholder for comparison
+    # This ensures we only detect actual content changes, not path differences
+    sed 's|"cwd": "[^"]*"|"cwd": "{{PROJECT_DIR}}"|g' "$file" | \
+    sed 's|/Users/[^/"]*/[^/"]*|{{PROJECT_DIR}}|g' | \
+    sed 's|/home/[^/"]*/[^/"]*|{{PROJECT_DIR}}|g'
+}
+
+# Show diff preview before update
+show_update_diff() {
+    local starforge_dir="$1"
+    local target_dir="$2"
+    local claude_dir="$3"
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📊 Update Preview${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Show version change
+    local old_version="unknown"
+    local new_version="unknown"
+    local old_commit="unknown"
+    local new_commit="unknown"
+
+    if [ -f "$claude_dir/STARFORGE_VERSION" ]; then
+        old_version=$(jq -r '.version // "unknown"' "$claude_dir/STARFORGE_VERSION" 2>/dev/null || echo "unknown")
+        old_commit=$(jq -r '.commit // "unknown"' "$claude_dir/STARFORGE_VERSION" 2>/dev/null || echo "unknown")
+    fi
+
+    if [ -f "$starforge_dir/templates/VERSION" ]; then
+        new_version=$(jq -r '.version // "unknown"' "$starforge_dir/templates/VERSION" 2>/dev/null || echo "unknown")
+        new_commit=$(jq -r '.commit // "unknown"' "$starforge_dir/templates/VERSION" 2>/dev/null || echo "unknown")
+    fi
+
+    echo -e "${YELLOW}Version:${NC} $old_version → $new_version"
+    echo -e "${YELLOW}Commit:${NC}  $old_commit → $new_commit"
+    echo ""
+
+    # Show changelog if available
+    if [ -f "$starforge_dir/templates/VERSION" ]; then
+        local changelog=$(jq -r '.changelog[]? // empty' "$starforge_dir/templates/VERSION" 2>/dev/null)
+        if [ -n "$changelog" ]; then
+            echo -e "${YELLOW}Changelog:${NC}"
+            echo "$changelog" | while IFS= read -r line; do
+                echo "  • $line"
+            done
+            echo ""
+        fi
+
+        # Show breaking changes if any
+        local breaking=$(jq -r '.breaking_changes[]? // empty' "$starforge_dir/templates/VERSION" 2>/dev/null)
+        if [ -n "$breaking" ]; then
+            echo -e "${RED}⚠️  BREAKING CHANGES:${NC}"
+            echo "$breaking" | while IFS= read -r line; do
+                echo "  ❗ $line"
+            done
+            echo ""
+        fi
+    fi
+
+    echo -e "${YELLOW}File Changes:${NC}"
+    echo ""
+
+    # Track stats
+    local changed_count=0
+    local new_count=0
+    local unchanged_count=0
+
+    # Check each template directory
+    local dirs=("agents" "scripts" "hooks" "bin")
+
+    for dir in "${dirs[@]}"; do
+        if [ -d "$starforge_dir/templates/$dir" ]; then
+            for template_file in "$starforge_dir/templates/$dir"/*; do
+                if [ -f "$template_file" ]; then
+                    local filename=$(basename "$template_file")
+                    local target_file="$claude_dir/$dir/$filename"
+
+                    if [ ! -f "$target_file" ]; then
+                        # New file
+                        ((new_count++))
+                        local lines=$(wc -l < "$template_file" 2>/dev/null | tr -d ' ')
+                        echo -e "  ${GREEN}NEW${NC}     $dir/$filename (+$lines lines)"
+                    else
+                        # Compare files
+                        local diff_output=$(diff -u "$target_file" "$template_file" 2>/dev/null || true)
+
+                        if [ -n "$diff_output" ]; then
+                            ((changed_count++))
+
+                            # Count added/removed lines
+                            local added=$(echo "$diff_output" | grep -c "^+" | tail -1 || echo "0")
+                            local removed=$(echo "$diff_output" | grep -c "^-" | tail -1 || echo "0")
+
+                            # Adjust for diff header lines
+                            added=$((added > 2 ? added - 2 : 0))
+                            removed=$((removed > 2 ? removed - 2 : 0))
+
+                            echo -e "  ${YELLOW}CHANGED${NC} $dir/$filename (+$added -$removed)"
+                        else
+                            ((unchanged_count++))
+                        fi
+                    fi
+                fi
+            done
+        fi
+    done
+
+    # Check protocol files
+    for file in "CLAUDE.md" "LEARNINGS.md"; do
+        if [ -f "$starforge_dir/templates/$file" ]; then
+            if [ ! -f "$claude_dir/$file" ]; then
+                ((new_count++))
+                local lines=$(wc -l < "$starforge_dir/templates/$file" 2>/dev/null | tr -d ' ')
+                echo -e "  ${GREEN}NEW${NC}     $file (+$lines lines)"
+            else
+                local diff_output=$(diff -u "$claude_dir/$file" "$starforge_dir/templates/$file" 2>/dev/null || true)
+
+                if [ -n "$diff_output" ]; then
+                    ((changed_count++))
+                    local added=$(echo "$diff_output" | grep -c "^+" | tail -1 || echo "0")
+                    local removed=$(echo "$diff_output" | grep -c "^-" | tail -1 || echo "0")
+                    added=$((added > 2 ? added - 2 : 0))
+                    removed=$((removed > 2 ? removed - 2 : 0))
+                    echo -e "  ${YELLOW}CHANGED${NC} $file (+$added -$removed)"
+                else
+                    ((unchanged_count++))
+                fi
+            fi
+        fi
+    done
+
+    # Check settings.json with normalization
+    if [ -f "$starforge_dir/templates/settings/settings.json" ]; then
+        local template_settings=$(sed "s|{{PROJECT_DIR}}|$target_dir|g" "$starforge_dir/templates/settings/settings.json")
+        local norm_template=$(echo "$template_settings" | normalize_settings_json /dev/stdin)
+
+        if [ ! -f "$claude_dir/settings.json" ]; then
+            ((new_count++))
+            local lines=$(echo "$template_settings" | wc -l | tr -d ' ')
+            echo -e "  ${GREEN}NEW${NC}     settings.json (+$lines lines) ${RED}⚠️  BREAKING${NC}"
+        else
+            local norm_current=$(normalize_settings_json "$claude_dir/settings.json")
+
+            if [ "$norm_current" != "$norm_template" ]; then
+                ((changed_count++))
+                local diff_output=$(diff -u <(echo "$norm_current") <(echo "$norm_template") 2>/dev/null || true)
+                local added=$(echo "$diff_output" | grep -c "^+" | tail -1 || echo "0")
+                local removed=$(echo "$diff_output" | grep -c "^-" | tail -1 || echo "0")
+                added=$((added > 2 ? added - 2 : 0))
+                removed=$((removed > 2 ? removed - 2 : 0))
+                echo -e "  ${YELLOW}CHANGED${NC} settings.json (+$added -$removed) ${RED}⚠️  BREAKING${NC}"
+            else
+                ((unchanged_count++))
+            fi
+        fi
+    fi
+
+    echo ""
+    echo -e "${CYAN}Summary:${NC} $changed_count changed, $new_count new, $unchanged_count unchanged"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Layer 1: Skip prompt if --force flag
+    if [ "$FORCE_UPDATE" = true ]; then
+        echo -e "${GREEN}🚀 Force mode: Proceeding with update...${NC}"
+        return 0
+    fi
+
+    # Layer 2: Detect TTY - error immediately if no TTY and no --force
+    if [ ! -t 0 ]; then
+        echo -e "${RED}❌ No TTY detected${NC}"
+        echo "   Cannot show interactive prompt without terminal"
+        echo "   Run with: ${YELLOW}bin/starforge update --force${NC}"
+        return 1
+    fi
+
+    # Layer 3: Interactive prompt with 10-second timeout
+    while true; do
+        echo -e "${YELLOW}Proceed with update?${NC}"
+        echo "  [y] Yes, apply changes"
+        echo "  [n] No, cancel update"
+        echo "  [d] Show detailed diff"
+        echo ""
+
+        if read -t 10 -p "Choice [y/n/d]: " -n 1 -r choice 2>/dev/null; then
+            echo ""
+
+            case "$choice" in
+                y|Y)
+                    return 0
+                    ;;
+                n|N)
+                    echo -e "${YELLOW}Update cancelled${NC}"
+                    return 1
+                    ;;
+                d|D)
+                    show_detailed_diff "$starforge_dir" "$target_dir" "$claude_dir"
+                    echo ""
+                    ;;
+                *)
+                    echo -e "${RED}Invalid choice. Please enter y, n, or d${NC}"
+                    echo ""
+                    ;;
+            esac
+        else
+            # Timeout or read error
+            echo ""
+            echo -e "${YELLOW}⏱️  Timeout (10 seconds) - cancelling update${NC}"
+            echo "   Run with: ${YELLOW}bin/starforge update --force${NC}"
+            return 1
+        fi
+    done
+}
+
+# Show detailed unified diff
+show_detailed_diff() {
+    local starforge_dir="$1"
+    local target_dir="$2"
+    local claude_dir="$3"
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📋 DETAILED DIFF${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Show diffs for each changed file
+    local dirs=("agents" "scripts" "hooks" "bin")
+
+    for dir in "${dirs[@]}"; do
+        if [ -d "$starforge_dir/templates/$dir" ]; then
+            for template_file in "$starforge_dir/templates/$dir"/*; do
+                if [ -f "$template_file" ]; then
+                    local filename=$(basename "$template_file")
+                    local target_file="$claude_dir/$dir/$filename"
+
+                    if [ -f "$target_file" ]; then
+                        local diff_output=$(diff -u "$target_file" "$template_file" 2>/dev/null || true)
+
+                        if [ -n "$diff_output" ]; then
+                            echo -e "${YELLOW}━━━ $dir/$filename ━━━${NC}"
+                            echo "$diff_output"
+                            echo ""
+                        fi
+                    fi
+                fi
+            done
+        fi
+    done
+
+    # Protocol files
+    for file in "CLAUDE.md" "LEARNINGS.md"; do
+        if [ -f "$starforge_dir/templates/$file" ] && [ -f "$claude_dir/$file" ]; then
+            local diff_output=$(diff -u "$claude_dir/$file" "$starforge_dir/templates/$file" 2>/dev/null || true)
+
+            if [ -n "$diff_output" ]; then
+                echo -e "${YELLOW}━━━ $file ━━━${NC}"
+                echo "$diff_output"
+                echo ""
+            fi
+        fi
+    done
+
+    # Settings.json with normalization
+    if [ -f "$starforge_dir/templates/settings/settings.json" ] && [ -f "$claude_dir/settings.json" ]; then
+        local template_settings=$(sed "s|{{PROJECT_DIR}}|$target_dir|g" "$starforge_dir/templates/settings/settings.json")
+        local norm_template=$(echo "$template_settings" | normalize_settings_json /dev/stdin)
+        local norm_current=$(normalize_settings_json "$claude_dir/settings.json")
+
+        if [ "$norm_current" != "$norm_template" ]; then
+            echo -e "${YELLOW}━━━ settings.json (normalized) ━━━${NC}"
+            diff -u <(echo "$norm_current") <(echo "$norm_template") 2>/dev/null || true
+            echo ""
+        fi
+    fi
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+detect_active_agents() {
+    local claude_dir="$1"
+
+    # Find active claude processes in agent worktrees
+    # Strategy: Check for processes working in actual agent worktree directories
+    # Pattern: starforge-master-{junior-dev,senior,qa-engineer,orchestrator,tpm}-{a-z}
+
+    # Get list of agent worktree paths from git
+    local agent_worktrees=$(git worktree list 2>/dev/null | \
+        grep -E "starforge-master-(junior-dev|senior|qa-engineer|orchestrator|tpm)-[a-z]" | \
+        awk '{print $1}' || true)
+
+    if [ -z "$agent_worktrees" ]; then
+        return 1  # No agent worktrees exist
+    fi
+
+    local active_agents=()
+    local active_pids=()
+
+    # Check each agent worktree for active Claude processes
+    while IFS= read -r worktree_path; do
+        if [ -n "$worktree_path" ]; then
+            # Look for claude processes with this worktree path in their command line or cwd
+            # This catches: claude running in that directory via --directory flag or cd
+            local pids=$(pgrep -f "claude.*${worktree_path}" 2>/dev/null || true)
+
+            if [ -n "$pids" ]; then
+                # Extract agent name from worktree path
+                local agent_name=$(basename "$worktree_path")
+                active_agents+=("$agent_name")
+                active_pids+=("$pids")
+            fi
+        fi
+    done <<< "$agent_worktrees"
+
+    # No active agents found
+    if [ ${#active_agents[@]} -eq 0 ]; then
+        return 1
+    fi
+
+    # Active agents detected - show error
+    echo -e "${RED}❌ Cannot update: Active agents detected${NC}"
+    echo ""
+    echo "Active agents:"
+
+    for i in "${!active_agents[@]}"; do
+        local agent="${active_agents[$i]}"
+        local pids="${active_pids[$i]}"
+
+        # Show each PID for this agent
+        while IFS= read -r pid; do
+            if [ -n "$pid" ]; then
+                echo -e "  ${YELLOW}•${NC} PID $pid: $agent"
+            fi
+        done <<< "$pids"
+    done
+
+    echo ""
+    echo "Options:"
+    echo "  1. Wait for agents to complete"
+    echo "  2. Stop agents manually: kill <PID>"
+    echo "  3. Force update anyway: bin/starforge update --force"
+    echo ""
+
+    return 0  # Active agents found
+}
+
+# Doctor command validation functions
+check_directory_structure() {
+    local required_dirs=(
+        ".claude"
+        ".claude/lib"
+        ".claude/bin"
+        ".claude/agents"
+        ".claude/hooks"
+        ".claude/scripts"
+        ".claude/triggers"
+        ".claude/logs"
+    )
+
+    local missing_dirs=()
+
+    for dir in "${required_dirs[@]}"; do
+        if [ ! -d "$dir" ]; then
+            missing_dirs+=("$dir")
+        fi
+    done
+
+    if [ ${#missing_dirs[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Directory structure complete${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Directory structure incomplete${NC}"
+        echo "   Missing directories:"
+        for dir in "${missing_dirs[@]}"; do
+            echo "     - $dir"
+        done
+        return 1
+    fi
+}
+
+check_critical_files() {
+    local required_files=(
+        ".claude/CLAUDE.md"
+        ".claude/LEARNINGS.md"
+        ".claude/settings.json"
+        ".claude/hooks/stop.py"
+    )
+
+    local missing_files=()
+
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            missing_files+=("$file")
+        fi
+    done
+
+    if [ ${#missing_files[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Critical files present${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Critical files missing${NC}"
+        echo "   Missing files:"
+        for file in "${missing_files[@]}"; do
+            echo "     - $file"
+        done
+        return 1
+    fi
+}
+
+check_file_counts() {
+    local all_passed=true
+
+    # Check lib files
+    local expected_lib=11
+    local actual_lib=$(find .claude/lib -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_lib" -eq "$expected_lib" ]; then
+        echo -e "${GREEN}✅ Library files complete ($actual_lib/$expected_lib)${NC}"
+    else
+        echo -e "${RED}❌ Library files incomplete ($actual_lib/$expected_lib)${NC}"
+        # List what's expected vs what's found
+        echo "   Expected files in .claude/lib/:"
+        echo "     - discord-notify.sh, logger.sh, project-env.sh, router.sh"
+        echo "     - mcp-tools-*.sh (6 files), git-helpers.sh"
+        all_passed=false
+    fi
+
+    # Check bin files
+    local expected_bin=3
+    local actual_bin=$(find .claude/bin -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_bin" -eq "$expected_bin" ]; then
+        echo -e "${GREEN}✅ Bin files complete ($actual_bin/$expected_bin)${NC}"
+    else
+        echo -e "${RED}❌ Bin files incomplete ($actual_bin/$expected_bin)${NC}"
+        echo "   Expected: daemon.sh, daemon-runner.sh, update-helpers.sh"
+        all_passed=false
+    fi
+
+    # Check agent definitions
+    local expected_agents=5
+    local actual_agents=$(find .claude/agents -maxdepth 1 -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_agents" -eq "$expected_agents" ]; then
+        echo -e "${GREEN}✅ Agent definitions present ($actual_agents/$expected_agents)${NC}"
+    else
+        echo -e "${RED}❌ Agent definitions incomplete ($actual_agents/$expected_agents)${NC}"
+        echo "   Expected: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent"
+        all_passed=false
+    fi
+
+    [ "$all_passed" = true ] && return 0 || return 1
+}
+
+check_json_config() {
+    local settings_file=".claude/settings.json"
+
+    # Check file exists (redundant with check_critical_files but defensive)
+    if [ ! -f "$settings_file" ]; then
+        echo -e "${RED}❌ settings.json not found${NC}"
+        return 1
+    fi
+
+    # Check if valid JSON
+    if ! jq empty "$settings_file" 2>/dev/null; then
+        echo -e "${RED}❌ settings.json is not valid JSON${NC}"
+        echo "   Run 'jq . $settings_file' to see parse errors"
+        return 1
+    fi
+
+    # Check if hooks.Stop configuration exists
+    local has_stop_hook=$(jq -r '.hooks.Stop // empty' "$settings_file" 2>/dev/null)
+
+    if [ -z "$has_stop_hook" ]; then
+        echo -e "${RED}❌ JSON configuration incomplete${NC}"
+        echo "   Missing: hooks.Stop configuration"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ JSON configuration valid${NC}"
+    return 0
+}
+
+check_file_permissions() {
+    local files_to_check=()
+    local non_executable=()
+
+    # Collect all files that should be executable
+    files_to_check+=(".claude/hooks/stop.py")
+
+    # Add all .sh files in scripts/, lib/, bin/
+    while IFS= read -r file; do
+        files_to_check+=("$file")
+    done < <(find .claude/scripts .claude/lib .claude/bin -name "*.sh" 2>/dev/null)
+
+    # Check each file for executable permission
+    for file in "${files_to_check[@]}"; do
+        if [ ! -x "$file" ]; then
+            non_executable+=("$file")
+        fi
+    done
+
+    if [ ${#non_executable[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Permissions correct${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Permission errors found${NC}"
+        echo "   Non-executable files:"
+        for file in "${non_executable[@]}"; do
+            echo "     - $file"
+        done
+        echo ""
+        echo "   Fix with: chmod +x <file>"
+        return 1
+    fi
+}
+
+run_doctor_checks() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}🔍 StarForge Doctor${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    local all_passed=true
+
+    # Run all validation checks
+    check_directory_structure || all_passed=false
+    check_critical_files || all_passed=false
+    check_file_counts || all_passed=false
+    check_json_config || all_passed=false
+    check_file_permissions || all_passed=false
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ "$all_passed" = true ]; then
+        echo -e "${GREEN}🎉 All systems go! StarForge is ready.${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}⚠️  Installation incomplete. Run 'starforge update' to fix.${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        return 1
+    fi
+}
+
+# Command dispatcher
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+    install)
+        # Run the installer
+        "$STARFORGE_DIR/bin/install.sh" "$@"
+        INSTALL_EXIT_CODE=$?
+
+        # Auto-start daemon after successful install
+        if [ $INSTALL_EXIT_CODE -eq 0 ]; then
+            echo ""
+            echo -e "${BLUE}Starting StarForge daemon...${NC}"
+
+            # Start daemon silently (it will check if already running)
+            if "$STARFORGE_DIR/templates/bin/daemon.sh" --silent start; then
+                echo -e "${GREEN}✓ Daemon started successfully${NC}"
+                echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Could not start daemon automatically${NC}"
+                echo -e "${YELLOW}   Start manually: starforge daemon start${NC}"
+            fi
+        fi
+
+        exit $INSTALL_EXIT_CODE
+        ;;
+
+    update)
+        # Parse command-line flags
+        FORCE_UPDATE=false
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --force|-f)
+                    FORCE_UPDATE=true
+                    shift
+                    ;;
+                *)
+                    echo -e "${RED}❌ Unknown flag: $1${NC}" >&2
+                    echo -e "   Usage: starforge update [--force|-f]" >&2
+                    exit 1
+                    ;;
+            esac
+        done
+
+        # Update StarForge agents from latest templates
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Get target directory
+        TARGET_DIR="$(pwd)"
+        CLAUDE_DIR="$TARGET_DIR/.claude"
+
+        # Check for active agents (unless --force)
+        if [ "$FORCE_UPDATE" = false ]; then
+            if detect_active_agents "$CLAUDE_DIR"; then
+                echo -e "${RED}Update blocked${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Warning: Forcing update with active agents${NC}"
+            echo "This may cause issues with running agents."
+            echo ""
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🔄 Updating StarForge Agents${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Get target directory
+        TARGET_DIR="$(pwd)"
+        CLAUDE_DIR="$TARGET_DIR/.claude"
+
+        # Check permissions before proceeding
+        if ! check_permissions "$CLAUDE_DIR" "update"; then
+            exit 1
+        fi
+
+        # Pull latest from starforge-master repo
+        echo -e "${INFO}Pulling latest StarForge templates..."
+        cd "$STARFORGE_DIR"
+        if git pull origin main --quiet; then
+            echo -e "${CHECK} Updated starforge-master from GitHub"
+        else
+            echo -e "${WARN}Could not pull from GitHub (using local templates)"
+        fi
+        cd - > /dev/null
+
+        # Show diff preview and get confirmation BEFORE backup
+        if ! show_update_diff "$STARFORGE_DIR" "$TARGET_DIR" "$CLAUDE_DIR"; then
+            # User cancelled
+            exit 0
+        fi
+
+        # Source shared library for directory management functions
+        source "$STARFORGE_DIR/templates/lib/starforge-common.sh"
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Version Detection and Migration
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        echo ""
+        echo "🔍 Detecting installed version..."
+
+        # Detect current version
+        INSTALLED_VERSION=$(detect_installed_version "$CLAUDE_DIR")
+
+        # Get latest version
+        LATEST_VERSION="unknown"
+        if [ -f "$STARFORGE_DIR/templates/VERSION" ]; then
+            LATEST_VERSION=$(jq -r '.version // "unknown"' "$STARFORGE_DIR/templates/VERSION" 2>/dev/null || echo "unknown")
+        fi
+
+        echo "   Installed: $INSTALLED_VERSION"
+        echo "   Latest: $LATEST_VERSION"
+        echo ""
+
+        # Run migration if needed
+        MIGRATION_NEEDED=false
+        case "$INSTALLED_VERSION" in
+            "pre-1.0.0")
+                MIGRATION_NEEDED=true
+                migrate_from_pre_1_0_0 "$TARGET_DIR" "$CLAUDE_DIR" "$STARFORGE_DIR"
+                ;;
+            "1.0.0")
+                if [ "$LATEST_VERSION" != "1.0.0" ]; then
+                    MIGRATION_NEEDED=true
+                    migrate_from_1_0_0 "$TARGET_DIR" "$CLAUDE_DIR" "$STARFORGE_DIR"
+                fi
+                ;;
+            *)
+                echo "✅ No migration needed"
+                echo ""
+                ;;
+        esac
+
+        # Ensure complete directory structure before file operations
+        echo ""
+        ensure_directory_structure "$CLAUDE_DIR"
+        echo ""
+
+        # Create backup BEFORE any file overwrites
+        create_backup "$CLAUDE_DIR"
+
+        # Update agent definitions
+        echo -e "${INFO}Updating agent definitions..."
+        cp "$STARFORGE_DIR/templates/agents"/*.md "$CLAUDE_DIR/agents/"
+        echo -e "${CHECK} Updated 5 agent definitions"
+
+        # Update scripts
+        echo -e "${INFO}Updating scripts..."
+        cp "$STARFORGE_DIR/templates/scripts"/*.sh "$CLAUDE_DIR/scripts/"
+        chmod +x "$CLAUDE_DIR/scripts"/*.sh
+        echo -e "${CHECK} Updated scripts"
+
+        # Update hooks (copy all files, skip directories like __pycache__)
+        echo -e "${INFO}Updating hooks..."
+        find "$STARFORGE_DIR/templates/hooks" -maxdepth 1 -type f -exec cp {} "$CLAUDE_DIR/hooks/" \;
+        chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
+        echo -e "${CHECK} Updated hooks"
+
+        # Update bin scripts (daemon, etc.)
+        echo -e "${INFO}Updating bin scripts..."
+        mkdir -p "$CLAUDE_DIR/bin"
+        cp "$STARFORGE_DIR/templates/bin"/*.sh "$CLAUDE_DIR/bin/"
+        chmod +x "$CLAUDE_DIR/bin"/*.sh
+        echo -e "${CHECK} Updated bin scripts"
+
+        # Update CLI binary itself
+        echo -e "${INFO}Updating StarForge CLI..."
+
+        # Update in user's PATH if it exists there
+        if [ -f ~/.local/bin/starforge ]; then
+            cp "$STARFORGE_DIR/templates/bin/starforge" ~/.local/bin/starforge
+            chmod +x ~/.local/bin/starforge
+            echo -e "${CHECK} CLI updated (system-wide in ~/.local/bin)"
+        else
+            echo -e "${WARN}CLI not found in ~/.local/bin (skipping system-wide update)"
+            echo -e "      Run install to add CLI to PATH: starforge install"
+        fi
+
+        # Update protocol files
+        echo -e "${INFO}Updating protocol files..."
+        
+        # CLAUDE.md - preserve if user has customized it
+        if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
+            # Check if file has been modified from template
+            if ! diff -q "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md" > /dev/null 2>&1; then
+                # User has customized - preserve and copy new version alongside
+                cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.new"
+                echo -e "${WARN} ${YELLOW}CLAUDE.md has user customizations - preserved${NC}"
+                echo -e "      ${YELLOW}New template saved as CLAUDE.md.new for manual merge${NC}"
+            else
+                # Unchanged - safe to update
+                cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+                echo -e "${CHECK} Updated CLAUDE.md"
+            fi
+        else
+            # New installation - just copy
+            cp "$STARFORGE_DIR/templates/CLAUDE.md" "$CLAUDE_DIR/"
+            echo -e "${CHECK} Added CLAUDE.md"
+        fi
+
+        # LEARNINGS.md - preserve if user has customized it
+        if [ -f "$CLAUDE_DIR/LEARNINGS.md" ]; then
+            # Check if file has been modified from template
+            if ! diff -q "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/LEARNINGS.md" > /dev/null 2>&1; then
+                # User has customized - preserve and copy new version alongside
+                cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/LEARNINGS.md.new"
+                echo -e "${WARN} ${YELLOW}LEARNINGS.md has user customizations - preserved${NC}"
+                echo -e "      ${YELLOW}New template saved as LEARNINGS.md.new for manual merge${NC}"
+            else
+                # Unchanged - safe to update
+                cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
+                echo -e "${CHECK} Updated LEARNINGS.md"
+            fi
+        else
+            # New installation - just copy
+            cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
+            echo -e "${CHECK} Added LEARNINGS.md"
+        fi
+        echo -e "${CHECK} Updated protocol files"
+
+        # Update settings with path replacement
+        echo -e "${INFO}Updating settings.json..."
+        sed "s|{{PROJECT_DIR}}|$TARGET_DIR|g" "$STARFORGE_DIR/templates/settings/settings.json" > "$CLAUDE_DIR/settings.json"
+        echo -e "${CHECK} Updated settings.json"
+
+        # Copy .env.example if it exists in templates (only if not already in project)
+        if [ -f "$STARFORGE_DIR/templates/.env.example" ] && [ ! -f "$TARGET_DIR/.env.example" ]; then
+            echo -e "${INFO}Adding .env.example template..."
+            cp "$STARFORGE_DIR/templates/.env.example" "$TARGET_DIR/.env.example"
+            echo -e "${CHECK} Added .env.example (configure for Discord notifications)"
+        fi
+
+        # Copy VERSION file to track installed version
+        if [ -f "$STARFORGE_DIR/templates/VERSION" ]; then
+            cp "$STARFORGE_DIR/templates/VERSION" "$CLAUDE_DIR/STARFORGE_VERSION"
+        fi
+
+        # Initialize agent learnings if missing
+        echo ""
+        initialize_agent_learnings "$CLAUDE_DIR" "$STARFORGE_DIR"
+        echo ""
+
+        # Validate installation
+        if ! validate_installation "$CLAUDE_DIR"; then
+            echo -e "${RED}❌ Directory structure validation failed${NC}"
+            echo -e "${YELLOW}   Please report this issue with your .claude/ directory state${NC}"
+        fi
+
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CHECK} ${GREEN}StarForge updated successfully!${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "${YELLOW}Updated components:${NC}"
+        echo "  - 5 agent definitions (orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent)"
+        echo "  - Scripts (trigger-monitor, trigger-helpers, watch-triggers)"
+        echo "  - Hooks (block-main-edits, block-main-bash, stop.py with Discord integration)"
+        echo "  - Bin scripts (daemon, daemon-runner)"
+        echo "  - Protocol files (CLAUDE.md, LEARNINGS.md)"
+        echo "  - Settings (settings.json)"
+        echo "  - Configuration templates (.env.example for Discord webhooks)"
+
+        # Auto-restart daemon after successful update
+        echo ""
+        echo -e "${BLUE}Restarting StarForge daemon...${NC}"
+
+        # Restart daemon silently (idempotent - will start if not running)
+        if "$CLAUDE_DIR/bin/daemon.sh" --silent restart 2>/dev/null || \
+           "$CLAUDE_DIR/bin/daemon.sh" --silent start 2>/dev/null; then
+            echo -e "${GREEN}✓ Daemon restarted successfully${NC}"
+            echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Could not restart daemon automatically${NC}"
+            echo -e "${YELLOW}   Restart manually: starforge daemon restart${NC}"
+        fi
+        echo ""
+        echo -e "${GREEN}Preserved:${NC}"
+        echo "  - Agent learnings (.claude/agents/agent-learnings/)"
+        echo "  - Breakdowns (.claude/breakdowns/)"
+        echo "  - Triggers (.claude/triggers/)"
+        echo "  - Coordination files (.claude/coordination/)"
+        echo "  - PROJECT_CONTEXT.md and TECH_STACK.md"
+        echo ""
+        ;;
+
+    analyze)
+        # Trigger Main Claude to analyze project
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🔍 LAUNCHING PROJECT ANALYSIS${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "Main Claude will now analyze your repository and generate:"
+        echo "  - PROJECT_CONTEXT.md (what this project is)"
+        echo "  - TECH_STACK.md (technologies used)"
+        echo "  - initial-assessment.md (current state analysis)"
+        echo ""
+        echo -e "${YELLOW}Opening Claude Code CLI...${NC}"
+        echo ""
+
+        # Check if Claude Code CLI is installed
+        if ! command -v claude &> /dev/null; then
+            echo -e "${RED}❌ Claude Code CLI not found${NC}"
+            echo -e "   Install from: https://docs.claude.com/claude-code"
+            exit 1
+        fi
+
+        # Create analysis prompt with context
+        project_dir="$(pwd)"
+        project_name="$(basename "$project_dir")"
+
+        # Prepare analysis prompt (capture in variable to preserve TTY)
+        analysis_prompt=$(cat "$STARFORGE_DIR/templates/initial-analysis-prompt.md" | \
+        sed "s|\[Will be provided when this prompt is invoked\]|$project_dir|g")
+
+        # Launch Claude Code with the analysis prompt as argument (not piped to preserve TTY)
+        claude "$analysis_prompt"
+        ;;
+
+    monitor)
+        # Start the trigger monitor
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        if [ ! -f ".claude/scripts/trigger-monitor.sh" ]; then
+            echo -e "${RED}❌ Trigger monitor script not found${NC}"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🔍 Starting Trigger Monitor${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "Watching for agent handoffs..."
+        echo "Press Ctrl+C to stop"
+        echo ""
+
+        exec "./.claude/scripts/trigger-monitor.sh" "$@"
+        ;;
+
+    daemon)
+        # Manage the autonomous daemon
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        if [ ! -f ".claude/bin/daemon.sh" ]; then
+            echo -e "${RED}❌ Daemon not found. Run 'starforge update' to install.${NC}"
+            exit 1
+        fi
+
+        # Route to daemon lifecycle manager in user's .claude/bin/
+        "./.claude/bin/daemon.sh" "$@"
+        ;;
+
+    use)
+        # Invoke a specific agent
+        agent="$1"
+
+        if [ -z "$agent" ]; then
+            echo -e "${RED}❌ Please specify an agent${NC}"
+            echo ""
+            echo "Available agents:"
+            echo "  - orchestrator"
+            echo "  - senior-engineer"
+            echo "  - junior-engineer"
+            echo "  - qa-engineer"
+            echo "  - tpm-agent"
+            echo ""
+            echo "Usage: starforge use <agent>"
+            echo "Example: starforge use senior-engineer"
+            exit 1
+        fi
+
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Normalize agent name
+        agent=$(echo "$agent" | tr '[:upper:]' '[:lower:]' | sed 's/[_-]//g')
+
+        case "$agent" in
+            orchestrator)
+                agent_file=".claude/agents/orchestrator.md"
+                agent_name="Orchestrator"
+                ;;
+            seniorengineer|senior)
+                agent_file=".claude/agents/senior-engineer.md"
+                agent_name="Senior Engineer"
+                ;;
+            juniorengineer|junior|juniordeva|juniordevb|juniordevc)
+                agent_file=".claude/agents/junior-engineer.md"
+                agent_name="Junior Engineer"
+                ;;
+            qaengineer|qa)
+                agent_file=".claude/agents/qa-engineer.md"
+                agent_name="QA Engineer"
+                ;;
+            tpmagent|tpm)
+                agent_file=".claude/agents/tpm-agent.md"
+                agent_name="TPM Agent"
+                ;;
+            *)
+                echo -e "${RED}❌ Unknown agent: $1${NC}"
+                echo ""
+                echo "Available agents:"
+                echo "  - orchestrator"
+                echo "  - senior-engineer"
+                echo "  - junior-engineer"
+                echo "  - qa-engineer"
+                echo "  - tpm-agent"
+                exit 1
+                ;;
+        esac
+
+        if [ ! -f "$agent_file" ]; then
+            echo -e "${RED}❌ Agent file not found: $agent_file${NC}"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🤖 Invoking $agent_name${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "${YELLOW}Opening Claude Code with $agent_name agent...${NC}"
+        echo ""
+
+        # Check if Claude Code CLI is installed
+        if ! command -v claude &> /dev/null; then
+            echo -e "${RED}❌ Claude Code CLI not found${NC}"
+            echo -e "   Install from: https://docs.claude.com/claude-code"
+            exit 1
+        fi
+
+        # Invoke Claude Code with agent prompt as argument (not piped to preserve TTY)
+        claude "Use the ${agent_name} agent."
+        ;;
+
+    status)
+        # Show agent status
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🤖 StarForge Agent Status${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Check for worktrees
+        if command -v git &> /dev/null && git worktree list &> /dev/null; then
+            echo -e "${GREEN}WORKTREES:${NC}"
+            git worktree list | while IFS= read -r line; do
+                if echo "$line" | grep -q "junior-dev"; then
+                    branch=$(echo "$line" | awk '{print $3}' | tr -d '[]')
+                    path=$(echo "$line" | awk '{print $1}')
+                    echo "  $(basename "$path"): $branch"
+                fi
+            done
+            echo ""
+        fi
+
+        # Check for coordination files
+        if [ -d ".claude/coordination" ]; then
+            echo -e "${GREEN}AGENTS:${NC}"
+            has_agents=false
+            for status_file in .claude/coordination/*-status.json; do
+                if [ -f "$status_file" ]; then
+                    has_agents=true
+                    agent=$(basename "$status_file" | sed 's/-status.json//')
+                    status=$(jq -r '.status // "unknown"' "$status_file" 2>/dev/null || echo "unknown")
+                    ticket=$(jq -r '.ticket // "none"' "$status_file" 2>/dev/null || echo "none")
+
+                    if [ "$status" = "working" ] && [ "$ticket" != "none" ]; then
+                        echo "  $agent: WORKING on #$ticket"
+                    elif [ "$status" = "idle" ]; then
+                        echo "  $agent: IDLE (ready for work)"
+                    else
+                        echo "  $agent: $status"
+                    fi
+                fi
+            done
+
+            if [ "$has_agents" = false ]; then
+                echo "  No active agents (coordination files will be created when orchestrator assigns work)"
+            fi
+            echo ""
+        fi
+
+        # Check GitHub integration
+        if command -v gh &> /dev/null && gh auth status &> /dev/null; then
+            echo -e "${GREEN}GITHUB:${NC}"
+
+            # Check if we have a remote
+            if git remote get-url origin &> /dev/null; then
+                ready=$(gh issue list --label "ready" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+                in_progress=$(gh issue list --label "in-progress" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+                needs_review=$(gh pr list --label "needs-review" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+
+                echo "  Ready tickets: $ready"
+                echo "  In progress: $in_progress"
+                echo "  Needs review: $needs_review"
+            else
+                echo "  No remote configured (local only mode)"
+            fi
+            echo ""
+        fi
+
+        # Check for recent triggers
+        if [ -d ".claude/triggers" ]; then
+            echo -e "${GREEN}RECENT ACTIVITY:${NC}"
+            trigger_count=$(find .claude/triggers -name "*.trigger" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+            if [ "$trigger_count" -gt 0 ]; then
+                find .claude/triggers -name "*.trigger" -type f -exec ls -t {} + 2>/dev/null | head -3 | while read trigger; do
+                    from=$(jq -r '.from_agent // "unknown"' "$trigger" 2>/dev/null || echo "unknown")
+                    to=$(jq -r '.to_agent // "unknown"' "$trigger" 2>/dev/null || echo "unknown")
+                    action=$(jq -r '.action // "unknown"' "$trigger" 2>/dev/null || echo "unknown")
+                    time=$(stat -f "%Sm" -t "%H:%M:%S" "$trigger" 2>/dev/null || echo "unknown")
+                    echo "  [$time] $from → $to | $action"
+                done
+            else
+                echo "  No triggers yet (will appear when agents communicate)"
+            fi
+            echo ""
+        fi
+        ;;
+
+    doctor)
+        # Run health checks
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        run_doctor_checks
+        ;;
+
+    setup)
+        # Setup integrations and configurations
+        SUBCOMMAND="${1:-help}"
+        shift || true
+
+        case "$SUBCOMMAND" in
+            discord)
+                # Setup Discord integration
+                echo ""
+                # Check if discord-setup.sh exists
+                DISCORD_SETUP="$STARFORGE_DIR/templates/scripts/discord-setup.sh"
+                if [ ! -f "$DISCORD_SETUP" ]; then
+                    echo -e "${RED}❌ Discord setup script not found${NC}"
+                    echo -e "   Expected: $DISCORD_SETUP"
+                    echo -e "   Run: starforge update"
+                    exit 1
+                fi
+
+                # Check dependencies
+                if ! command -v curl &> /dev/null; then
+                    echo -e "${RED}❌ curl is required but not installed${NC}"
+                    exit 1
+                fi
+
+                if ! command -v jq &> /dev/null; then
+                    echo -e "${RED}❌ jq is required but not installed${NC}"
+                    echo -e "   Install: brew install jq"
+                    exit 1
+                fi
+
+                # Run Discord setup wizard
+                bash "$DISCORD_SETUP"
+                ;;
+
+            help|*)
+                # Show setup help
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}StarForge Setup Commands${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "  ${YELLOW}starforge setup discord${NC}"
+                echo "    Set up Discord notifications for agent activity"
+                echo "    Creates channels, webhooks, and .env configuration"
+                echo "    Time: ~2 minutes"
+                echo ""
+                echo -e "  ${YELLOW}starforge setup help${NC}"
+                echo "    Show this help message"
+                echo ""
+                ;;
+        esac
+        ;;
+
+    logs)
+        # View and manage logs
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Source logger library
+        if [ -f "$STARFORGE_DIR/templates/lib/logger.sh" ]; then
+            source "$STARFORGE_DIR/templates/lib/logger.sh"
+        else
+            echo -e "${RED}❌ Logger library not found${NC}"
+            exit 1
+        fi
+
+        # Get subcommand
+        SUBCOMMAND="${1:-recent}"
+        shift || true
+
+        case "$SUBCOMMAND" in
+            recent)
+                # Show recent log entries
+                COUNT="${1:-50}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}📋 Recent Log Entries (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_recent_logs "$COUNT" || echo "No logs found"
+                ;;
+
+            errors)
+                # Show error logs only
+                COUNT="${1:-50}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${RED}❌ Error Logs (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_error_logs "$COUNT" || echo "No error logs found"
+                ;;
+
+            warnings)
+                # Show warning logs only
+                COUNT="${1:-50}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${YELLOW}⚠️  Warning Logs (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_warning_logs "$COUNT" || echo "No warning logs found"
+                ;;
+
+            component)
+                # Show logs for specific component
+                COMPONENT="$1"
+                COUNT="${2:-50}"
+
+                if [ -z "$COMPONENT" ]; then
+                    echo -e "${RED}❌ Please specify a component${NC}"
+                    echo ""
+                    echo "Usage: starforge logs component <name> [count]"
+                    echo ""
+                    echo "Examples:"
+                    echo "  starforge logs component orchestrator"
+                    echo "  starforge logs component junior-dev-a 100"
+                    exit 1
+                fi
+
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}📋 Logs for component: $COMPONENT (last $COUNT)${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                get_component_logs "$COMPONENT" "$COUNT" || echo "No logs found for component: $COMPONENT"
+                ;;
+
+            rotate)
+                # Rotate logs
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}🔄 Rotating Logs${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo "Keeping logs from last ${LOG_RETENTION_DAYS:-7} days..."
+                rotate_logs
+                echo -e "${GREEN}✓ Logs rotated successfully${NC}"
+                ;;
+
+            clear)
+                # Clear logs
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${YELLOW}⚠️  Clearing Logs${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                read -p "Are you sure you want to clear all logs? [y/N] " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    clear_logs
+                    echo -e "${GREEN}✓ Logs cleared${NC}"
+                else
+                    echo "Cancelled"
+                fi
+                ;;
+
+            help)
+                # Show logs help
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${BLUE}📋 StarForge Logs Commands${NC}"
+                echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "${GREEN}USAGE:${NC}"
+                echo "  starforge logs [command] [options]"
+                echo ""
+                echo -e "${GREEN}COMMANDS:${NC}"
+                echo ""
+                echo -e "  ${YELLOW}recent [count]${NC}"
+                echo "    Show recent log entries (default: 50)"
+                echo "    Example: starforge logs recent 100"
+                echo ""
+                echo -e "  ${YELLOW}errors [count]${NC}"
+                echo "    Show error logs only (default: 50)"
+                echo "    Example: starforge logs errors 20"
+                echo ""
+                echo -e "  ${YELLOW}warnings [count]${NC}"
+                echo "    Show warning logs only (default: 50)"
+                echo "    Example: starforge logs warnings 20"
+                echo ""
+                echo -e "  ${YELLOW}component <name> [count]${NC}"
+                echo "    Show logs for specific component (default: 50)"
+                echo "    Example: starforge logs component orchestrator"
+                echo ""
+                echo -e "  ${YELLOW}rotate${NC}"
+                echo "    Rotate logs (keep last 7 days)"
+                echo "    Example: starforge logs rotate"
+                echo ""
+                echo -e "  ${YELLOW}clear${NC}"
+                echo "    Clear all logs (with confirmation)"
+                echo "    Example: starforge logs clear"
+                echo ""
+                echo -e "  ${YELLOW}help${NC}"
+                echo "    Show this help message"
+                echo ""
+                echo -e "${GREEN}LOG FORMAT:${NC}"
+                echo "  [timestamp] [level] [component] message"
+                echo "  Example: [2025-10-23T07:46:44Z] [INFO] [orchestrator] Assigned ticket #42"
+                echo ""
+                ;;
+
+            *)
+                echo -e "${RED}❌ Unknown logs subcommand: $SUBCOMMAND${NC}"
+                echo ""
+                echo "Run 'starforge logs help' for available commands"
+                exit 1
+                ;;
+        esac
+        ;;
+
+    help|--help|-h)
+        # Show help
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🚀 StarForge - AI Development Team${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "A portable multi-agent development system for Claude Code"
+        echo ""
+        echo -e "${GREEN}COMMANDS:${NC}"
+        echo ""
+        echo -e "  ${YELLOW}starforge install${NC}"
+        echo "    Install StarForge in the current project"
+        echo "    Creates .claude/ structure, agent definitions, and git worktrees"
+        echo ""
+        echo -e "  ${YELLOW}starforge update [--force]${NC}"
+        echo "    Update agents and scripts from latest templates"
+        echo "    Pulls from GitHub and refreshes .claude/ without re-setup"
+        echo "    Use --force to skip interactive confirmation (required for automation/CI/CD)"
+        echo ""
+        echo -e "  ${YELLOW}starforge analyze${NC}"
+        echo "    Analyze your project and generate documentation"
+        echo "    Creates PROJECT_CONTEXT.md, TECH_STACK.md, and initial-assessment.md"
+        echo ""
+        echo -e "  ${YELLOW}starforge use <agent>${NC}"
+        echo "    Invoke a specific agent"
+        echo "    Agents: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent"
+        echo ""
+        echo -e "  ${YELLOW}starforge monitor${NC}"
+        echo "    Watch for agent triggers and handoffs (run in separate terminal)"
+        echo ""
+        echo -e "  ${YELLOW}starforge daemon <start|stop|status|restart|logs>${NC}"
+        echo "    Manage the autonomous daemon for 24/7 operation"
+        echo "    - start:   Start daemon in background"
+        echo "    - stop:    Stop the daemon gracefully"
+        echo "    - status:  Show daemon status and recent activity"
+        echo "    - restart: Restart the daemon"
+        echo "    - logs:    Tail the daemon log file"
+        echo ""
+        echo -e "  ${YELLOW}starforge status${NC}"
+        echo "    Show current agent status, worktrees, and GitHub queue"
+        echo ""
+        echo -e "  ${YELLOW}starforge doctor${NC}"
+        echo "    Run health checks on StarForge installation"
+        echo "    Validates directory structure, files, configs, and permissions"
+        echo ""
+        echo -e "  ${YELLOW}starforge help${NC}"
+        echo "    Show this help message"
+        echo ""
+        echo -e "${GREEN}EXAMPLES:${NC}"
+        echo ""
+        echo "  # Install StarForge in a new project"
+        echo "  cd my-project && starforge install"
+        echo ""
+        echo "  # Analyze an existing project"
+        echo "  starforge analyze"
+        echo ""
+        echo "  # Update to latest agent definitions"
+        echo "  starforge update"
+        echo ""
+        echo "  # Create a breakdown for a feature"
+        echo "  starforge use senior-engineer"
+        echo ""
+        echo "  # Check what agents are doing"
+        echo "  starforge status"
+        echo ""
+        echo -e "${GREEN}WORKFLOW:${NC}"
+        echo ""
+        echo "  1. Install:        starforge install"
+        echo "  2. Analyze:        starforge analyze"
+        echo "  3. Plan:           starforge use senior-engineer"
+        echo "  4. Create tickets: (TPM triggered automatically)"
+        echo "  5. Monitor:        starforge monitor (in separate terminal)"
+        echo "  6. Assign work:    starforge use orchestrator"
+        echo "  7. Check status:   starforge status"
+        echo ""
+        echo -e "${GREEN}DOCUMENTATION:${NC}"
+        echo "  https://github.com/JediMasterKT/starforge-master"
+        echo ""
+        ;;
+
+    *)
+        echo -e "${RED}❌ Unknown command: $COMMAND${NC}"
+        echo ""
+        echo "Run 'starforge help' for available commands"
+        exit 1
+        ;;
+esac

@@ -452,6 +452,27 @@ copy_agent_files() {
     echo -e "   - qa-engineer, tpm-agent"
 }
 
+# Function to install CLI binary
+install_cli_binary() {
+    echo ""
+    echo -e "${INFO}Installing StarForge CLI..."
+
+    # Install to user's local bin (in PATH)
+    mkdir -p ~/.local/bin
+    cp "$STARFORGE_ROOT/templates/bin/starforge" ~/.local/bin/starforge
+    chmod +x ~/.local/bin/starforge
+
+    # Check if ~/.local/bin is in PATH
+    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        echo -e "${WARN}~/.local/bin is not in your PATH"
+        echo -e "${YELLOW}   Add this to your ~/.bashrc or ~/.zshrc:${NC}"
+        echo -e "${YELLOW}   export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+        echo ""
+    else
+        echo -e "${CHECK} StarForge CLI installed to ~/.local/bin/starforge"
+    fi
+}
+
 # Function to configure worktrees
 configure_worktrees() {
     echo ""
@@ -650,6 +671,7 @@ main() {
 
     create_structure
     copy_agent_files
+    install_cli_binary
 
     # Validate directory structure (uses shared library)
     source "$TEMPLATE_DIR/lib/starforge-common.sh"
