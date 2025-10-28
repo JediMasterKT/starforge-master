@@ -107,6 +107,67 @@ check_dependencies() {
     return 0
 }
 
+# Function to check permissions
+check_permissions() {
+    local target_dir="$1"
+    local operation="${2:-install}"  # install or update
+
+    echo -e "${BLUE}Checking permissions...${NC}"
+    echo ""
+
+    # Check if directory exists and is writable
+    if [ -d "$target_dir" ]; then
+        if [ ! -w "$target_dir" ]; then
+            echo -e "${RED}❌ No write permission: $target_dir${NC}"
+            echo ""
+            echo "Current permissions:"
+            ls -ld "$target_dir"
+            echo ""
+            echo "Fix with:"
+            echo -e "  ${YELLOW}sudo chown -R \$USER $target_dir${NC}"
+            echo "  or"
+            echo -e "  ${YELLOW}chmod u+w $target_dir${NC}"
+            echo ""
+            return 1
+        fi
+    else
+        # Check parent directory
+        local parent_dir=$(dirname "$target_dir")
+        if [ ! -w "$parent_dir" ]; then
+            echo -e "${RED}❌ No write permission: $parent_dir${NC}"
+            echo ""
+            echo "Cannot create $target_dir in non-writable directory"
+            echo ""
+            echo "Current permissions:"
+            ls -ld "$parent_dir"
+            echo ""
+            echo "Fix with:"
+            echo -e "  ${YELLOW}sudo chown -R \$USER $parent_dir${NC}"
+            echo ""
+            return 1
+        fi
+    fi
+
+    # Check git worktree permissions (if .git exists)
+    if [ -d ".git" ] || [ -f ".git" ]; then
+        local git_dir=$(git rev-parse --git-common-dir 2>/dev/null)
+        if [ -n "$git_dir" ] && [ ! -w "$git_dir" ]; then
+            echo -e "${RED}❌ No write permission: $git_dir${NC}"
+            echo ""
+            echo "Cannot create git worktrees without write access"
+            echo ""
+            echo "Fix with:"
+            echo -e "  ${YELLOW}sudo chown -R \$USER $git_dir${NC}"
+            echo ""
+            return 1
+        fi
+    fi
+
+    echo -e "${GREEN}✓ Permissions OK${NC}"
+    echo ""
+    return 0
+}
+
 # Legacy function for backward compatibility
 check_prerequisites() {
     # Call the new dependency check function
@@ -496,6 +557,11 @@ main() {
         if ! backup_corrupted_installation "$CLAUDE_DIR"; then
             exit 1  # User chose to abort
         fi
+    fi
+
+    # Check permissions before proceeding
+    if ! check_permissions "$TARGET_DIR" "install"; then
+        exit 1
     fi
 
     detect_project_type
