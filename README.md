@@ -32,6 +32,7 @@ For the complete UX vision and roadmap, see [docs/UX-VISION.md](docs/UX-VISION.m
 - **🚀 One-Command Installation**: `starforge install` sets up everything
 - **📊 Project Analysis**: Automated codebase analysis and documentation generation
 - **🔄 Parallel Development**: Multiple agents work simultaneously via git worktrees
+- **🤖 Autonomous Daemon**: 24/7 background operation - agents work while you sleep
 - **🎯 GitHub Integration**: Automatic issue tracking and PR management
 - **🧪 Fully Tested**: TDD approach with 58 installer tests + 38 CLI tests
 - **🔒 IP Protected**: .claude/ folder never committed to your repositories
@@ -77,6 +78,21 @@ starforge analyze
 
 ### 4. Start Building
 
+**Option A: Autonomous Mode** (Recommended - 24/7 operation)
+```bash
+# Start the daemon
+starforge daemon start
+
+# Invoke agents - they work autonomously
+starforge use senior-engineer  # Create breakdown
+# (Agents automatically triggered: TPM → Orchestrator → Junior-devs → QA)
+
+# Check progress anytime
+starforge status
+starforge daemon status
+```
+
+**Option B: Manual Mode** (Interactive)
 ```bash
 # In terminal 1: Monitor agent activity
 starforge monitor
@@ -153,6 +169,56 @@ Starts the trigger monitor to watch agent handoffs in real-time. Run in a separa
 - Falls back to manual mode if not available
 - See installation instructions in Prerequisites section
 
+### `starforge daemon <command>`
+
+Manages the autonomous daemon for 24/7 agent operation. The daemon watches for triggers in the background and automatically invokes agents without user supervision.
+
+**Commands:**
+```bash
+starforge daemon start    # Start daemon in background
+starforge daemon stop     # Stop the daemon gracefully
+starforge daemon status   # Show daemon status and recent activity
+starforge daemon restart  # Restart the daemon
+starforge daemon logs     # Tail the daemon log file
+```
+
+**Workflow Modes:**
+
+**Manual Mode** (Interactive):
+```bash
+# Terminal 1: Monitor triggers
+starforge monitor
+
+# Terminal 2: Invoke agents manually
+starforge use senior-engineer
+starforge use orchestrator
+```
+
+**Autonomous Mode** (Fire-and-Forget):
+```bash
+# Start daemon - agents work autonomously
+starforge daemon start
+
+# Check what's happening
+starforge daemon status
+starforge status
+
+# Stop when done
+starforge daemon stop
+```
+
+**Prerequisites:**
+- Requires `fswatch` (macOS) or `inotifywait` (Linux)
+- Install with: `brew install fswatch` (macOS) or `sudo apt-get install inotify-tools` (Linux)
+
+**Daemon Features:**
+- **Autonomous Execution**: Processes triggers automatically as they arrive
+- **FIFO Processing**: Handles triggers in chronological order
+- **Error Recovery**: Moves malformed triggers to `failed/` directory
+- **Activity Logging**: Full logs in `.claude/logs/daemon.log`
+- **Graceful Shutdown**: Proper cleanup on stop
+- **Background Operation**: Runs without terminal/TTY requirement
+
 ### `starforge status`
 
 Shows current state:
@@ -167,8 +233,31 @@ Shows comprehensive help and usage examples.
 
 ## Workflow
 
-### For Existing Projects
+### Autonomous Mode (Recommended)
 
+**For Existing Projects:**
+1. **Install**: `starforge install`
+2. **Analyze**: `starforge analyze`
+3. **Start Daemon**: `starforge daemon start`
+4. **Plan**: `starforge use senior-engineer` (creates breakdown)
+   - TPM automatically creates GitHub Issues
+   - Orchestrator automatically assigns work to junior-devs
+   - Junior-devs autonomously implement features
+   - QA automatically reviews PRs
+5. **Check Progress**: `starforge status` or `starforge daemon status`
+6. **Review Output**: Check GitHub PRs when notified
+7. **Stop Daemon**: `starforge daemon stop` (when done)
+
+**For New Projects:**
+1. **Install**: `starforge install`
+2. **Brainstorm**: Use Main Claude to explore ideas
+3. **Start Daemon**: `starforge daemon start`
+4. **Plan**: `starforge use senior-engineer`
+5. **Walk Away**: Agents work autonomously - check progress with `starforge status`
+
+### Manual Mode (Interactive)
+
+**For Existing Projects:**
 1. **Install**: `starforge install`
 2. **Analyze**: `starforge analyze`
 3. **Plan**: `starforge use senior-engineer` (creates breakdown)
@@ -177,8 +266,7 @@ Shows comprehensive help and usage examples.
 6. **Assign Work**: `starforge use orchestrator`
 7. **Check Status**: `starforge status`
 
-### For New Projects
-
+**For New Projects:**
 1. **Install**: `starforge install`
 2. **Brainstorm**: Use Main Claude to explore ideas
 3. **Plan**: `starforge use senior-engineer`
