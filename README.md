@@ -225,6 +225,7 @@ The daemon uses the Claude Code CLI (`claude`) to invoke agents in non-interacti
 - **MCP Integration**: Agent tools provided via MCP server piped to stdin
 - **Permission Bypass**: Pre-approved permissions in `.claude/settings.json`
 - **Background Operation**: Runs without terminal/TTY requirement
+- **Autonomous Execution**: Processes triggers automatically as they arrive
 - **FIFO Processing**: Handles triggers in chronological order
 - **Error Recovery**: Moves malformed triggers to `failed/` directory
 - **Activity Logging**: Full logs in `.claude/logs/daemon.log`
