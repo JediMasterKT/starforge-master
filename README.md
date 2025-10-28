@@ -116,6 +116,7 @@ Installs StarForge in the current project. Creates:
 - Git installed
 - GitHub CLI (`gh`) installed and authenticated
 - `jq` installed for JSON processing
+- **Claude Code CLI** (`claude`) installed and available in PATH
 - **File watching tool (optional, for automatic trigger monitoring):**
   - macOS: `fswatch` - Install with `brew install fswatch`
   - Linux: `inotifywait` - Install with `sudo apt-get install inotify-tools`
@@ -207,17 +208,73 @@ starforge status
 starforge daemon stop
 ```
 
-**Prerequisites:**
-- Requires `fswatch` (macOS) or `inotifywait` (Linux)
-- Install with: `brew install fswatch` (macOS) or `sudo apt-get install inotify-tools` (Linux)
+**How It Works:**
 
-**Daemon Features:**
+The daemon uses the Claude Code CLI (`claude`) to invoke agents in non-interactive mode:
+
+```bash
+# Real agent invocation (not simulation)
+.claude/bin/mcp-server.sh | claude \
+  --print \
+  --permission-mode bypassPermissions \
+  "Use the orchestrator agent. Process this trigger..."
+```
+
+**Key Features:**
+- **Real Agent Execution**: Uses `claude --print` for non-interactive invocation
+- **MCP Integration**: Agent tools provided via MCP server piped to stdin
+- **Permission Bypass**: Pre-approved permissions in `.claude/settings.json`
+- **Background Operation**: Runs without terminal/TTY requirement
 - **Autonomous Execution**: Processes triggers automatically as they arrive
 - **FIFO Processing**: Handles triggers in chronological order
 - **Error Recovery**: Moves malformed triggers to `failed/` directory
 - **Activity Logging**: Full logs in `.claude/logs/daemon.log`
 - **Graceful Shutdown**: Proper cleanup on stop
-- **Background Operation**: Runs without terminal/TTY requirement
+
+**Prerequisites:**
+- Requires `fswatch` (macOS) or `inotifywait` (Linux)
+- Install with: `brew install fswatch` (macOS) or `sudo apt-get install inotify-tools` (Linux)
+- **Claude Code CLI** must be installed and available in PATH
+- Run `which claude` to verify - should return `/usr/local/bin/claude` or similar
+
+**Troubleshooting:**
+
+If you encounter "claude CLI not found" errors:
+
+1. **Verify Claude CLI is installed:**
+   ```bash
+   which claude
+   # Should return: /usr/local/bin/claude (or similar)
+   ```
+
+2. **Install Claude Code CLI if missing:**
+   - Visit: https://docs.claude.com/claude-code
+   - Follow installation instructions for your platform
+   - Verify with: `claude --version`
+
+3. **Check PATH environment:**
+   ```bash
+   echo $PATH
+   # Ensure /usr/local/bin is included
+   ```
+
+4. **Test manual invocation:**
+   ```bash
+   # Try invoking claude directly
+   echo "Hello" | claude --print "Say hello back"
+   # Should return a response from Claude
+   ```
+
+5. **Check daemon logs:**
+   ```bash
+   starforge daemon logs
+   # Look for "claude: command not found" errors
+   ```
+
+If the daemon fails to start, check:
+- `tail -f .claude/logs/daemon.log` for detailed error messages
+- Ensure all prerequisites (fswatch, jq, gh, claude) are installed
+- Verify `.claude/bin/mcp-server.sh` exists and is executable
 
 ### `starforge status`
 
@@ -309,6 +366,33 @@ Agents communicate asynchronously via JSON trigger files in `.claude/triggers/`:
 
 The trigger monitor watches for these files and notifies you of agent activity.
 
+### Daemon Agent Invocation
+
+The daemon automatically invokes agents when triggers are detected. This uses the Claude Code CLI in non-interactive mode:
+
+**Invocation Flow:**
+1. Daemon detects new trigger file in `.claude/triggers/`
+2. Validates JSON and extracts target agent
+3. Builds prompt from trigger context
+4. Invokes agent via MCP server + `claude --print`:
+   ```bash
+   .claude/bin/mcp-server.sh | claude \
+     --print \
+     --permission-mode bypassPermissions \
+     "Use the orchestrator agent. Task from senior-engineer: assign_work..."
+   ```
+5. Agent executes with pre-approved permissions from `.claude/settings.json`
+6. Output logged to `.claude/logs/daemon.log`
+7. Trigger archived to `processed/` or `failed/` based on result
+
+**Key Points:**
+- **No simulation**: Real agent execution via `claude` CLI
+- **Non-interactive**: Uses `--print` flag for background operation
+- **MCP tools**: Agent capabilities provided via MCP server on stdin
+- **Permission bypass**: Pre-configured in `.claude/settings.json`
+- **Error handling**: Automatic retry with exponential backoff (max 3 attempts)
+- **Timeout protection**: 30-minute timeout per agent invocation
+
 ## Directory Structure
 
 ```
@@ -369,7 +453,7 @@ StarForge works best with GitHub:
 - **Git** 2.20+
 - **GitHub CLI** (`gh`) - for GitHub integration
 - **jq** - for JSON processing
-- **Claude Code CLI** - for AI agents
+- **Claude Code CLI** (`claude`) - for AI agents
 - **terminal-notifier** (optional) - for desktop notifications
 
 Install prerequisites:
@@ -377,6 +461,11 @@ Install prerequisites:
 brew install gh jq terminal-notifier
 gh auth login
 ```
+
+**Installing Claude Code CLI:**
+- Visit: https://docs.claude.com/claude-code
+- Follow installation instructions
+- Verify: `claude --version`
 
 ## Configuration
 
@@ -449,6 +538,18 @@ Run `starforge install` in your project directory.
 ### "Claude Code CLI not found"
 Install from: https://docs.claude.com/claude-code
 
+Verify installation:
+```bash
+which claude
+claude --version
+```
+
+If installed but not found, check your PATH:
+```bash
+echo $PATH
+# Ensure directory containing 'claude' is included
+```
+
 ### "GitHub CLI not authenticated"
 Run: `gh auth login`
 
@@ -457,6 +558,58 @@ Ensure you're in a git repository with at least one commit.
 
 ### Tests failing
 Ensure all prerequisites are installed and you're running from `~/starforge-master/`.
+
+### Daemon fails to start
+
+Check prerequisites:
+```bash
+# Verify all required tools
+which fswatch  # or inotifywait on Linux
+which jq
+which gh
+which claude
+
+# Check daemon logs
+tail -f .claude/logs/daemon.log
+```
+
+Common issues:
+- **fswatch not installed**: `brew install fswatch` (macOS)
+- **claude not found**: Install Claude Code CLI (see Requirements)
+- **Permission errors**: Check `.claude/settings.json` permissions
+- **MCP server missing**: Run `starforge update` to deploy latest templates
+
+### Agent invocation fails in daemon mode
+
+If you see errors like "claude: command not found" in daemon logs:
+
+1. **Verify PATH in daemon context:**
+   ```bash
+   # Check what PATH the daemon sees
+   grep "PATH" .claude/logs/daemon.log
+   ```
+
+2. **Ensure claude is in system PATH:**
+   ```bash
+   # Add to ~/.zshrc or ~/.bashrc
+   export PATH="/usr/local/bin:$PATH"
+
+   # Reload
+   source ~/.zshrc
+   ```
+
+3. **Test invocation manually:**
+   ```bash
+   # From project root
+   .claude/bin/mcp-server.sh | claude --print "Hello"
+   ```
+
+4. **Check MCP server:**
+   ```bash
+   # Verify MCP server exists and is executable
+   ls -la .claude/bin/mcp-server.sh
+   chmod +x .claude/bin/mcp-server.sh
+   ```
 
 ## Examples
 
