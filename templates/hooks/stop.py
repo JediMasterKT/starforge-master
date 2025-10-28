@@ -35,6 +35,7 @@ import json
 import sys
 import os
 import subprocess
+import shutil
 from pathlib import Path
 from datetime import datetime
 import urllib.request
@@ -213,6 +214,21 @@ def main():
                 print(f"\nRun: starforge use {trigger_data['agent']}", file=sys.stderr)
                 print("="*50 + "\n", file=sys.stderr)
 
+            except KeyError as e:
+                # Handle missing required field in trigger
+                print(f"❌ Malformed trigger: Missing required field {e}", file=sys.stderr)
+                print(f"   Trigger file: {next_trigger}", file=sys.stderr)
+                print(f"   Required fields: to_agent, command, message", file=sys.stderr)
+
+                # Move to failed directory for debugging
+                triggers_dir = Path(".claude/triggers")
+                failed_dir = triggers_dir / "failed"
+                failed_dir.mkdir(parents=True, exist_ok=True)
+                failed_path = failed_dir / f"malformed-{next_trigger.name}"
+                shutil.move(str(next_trigger), str(failed_path))
+
+                print(f"   Moved to: {failed_path}", file=sys.stderr)
+
             except json.JSONDecodeError as e:
                 # Handle malformed JSON gracefully
                 print(f"Warning: Malformed trigger file {next_trigger}: {e}", file=sys.stderr)
@@ -224,9 +240,9 @@ def main():
         # Always exit 0 (fail gracefully)
         sys.exit(0)
 
-    except Exception as e:
-        # Log error but don't fail
-        print(f"Stop hook error: {e}", file=sys.stderr)
+    except (IOError, OSError) as e:
+        # Handle file system errors gracefully
+        print(f"File system error in stop hook: {e}", file=sys.stderr)
         sys.exit(0)  # Fail gracefully - don't block agent exit
 
 
