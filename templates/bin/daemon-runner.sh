@@ -178,9 +178,35 @@ monitor_agent_progress() {
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Agent Invocation
+# Agent Invocation (Sequential Mode)
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# invoke_agent - Invoke agent synchronously using real claude CLI
+#
+# This function performs REAL agent execution (not simulation).
+# It uses the Claude Code CLI with --print flag for non-interactive operation.
+#
+# Flow:
+#   1. Validate trigger JSON
+#   2. Extract agent and action from trigger
+#   3. Build prompt from trigger context
+#   4. Invoke via: MCP server | claude --print
+#   5. Log results and send notifications
+#
+# Args:
+#   $1 - Path to trigger file
+#
+# Returns:
+#   0 - Agent completed successfully
+#   1 - Agent failed (will be retried)
+#   2 - Parse error (no retry, marked invalid)
+#
+# Requirements:
+#   - Claude CLI must be installed and in PATH
+#   - MCP server must exist at .claude/bin/mcp-server.sh
+#   - Pre-approved permissions in .claude/settings.json
+#
+# Timeout: 30 minutes (AGENT_TIMEOUT)
 invoke_agent() {
   local trigger_file=$1
 
@@ -224,8 +250,8 @@ invoke_agent() {
   [ -n "$command" ] && prompt="$prompt\n\nCommand: $command"
   prompt="$prompt\n\nTrigger file: $trigger_file"
 
-  # Invoke agent via Task tool using claude --print (non-interactive)
-  log_event "TASKTOOL" "Invoking $to_agent via Task tool"
+  # Log real agent execution (not simulation)
+  log_event "EXECUTE" "Real agent invocation: $to_agent via claude --print"
 
   # Send agent start notification (if Discord configured)
   if type send_agent_start_notification &>/dev/null; then
@@ -236,8 +262,44 @@ invoke_agent() {
   monitor_agent_progress "$to_agent" "$start_time" "$ticket" &
   MONITOR_PID=$!
 
-  # Invoke agent via MCP server (no TTY required)
-  # MCP server pipes JSON-RPC to claude stdin
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # REAL AGENT INVOCATION (NOT SIMULATION)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  #
+  # The daemon invokes agents using the Claude Code CLI in non-interactive mode.
+  #
+  # Components:
+  #   1. MCP Server (.claude/bin/mcp-server.sh):
+  #      - Provides agent tools via JSON-RPC protocol
+  #      - Outputs to stdout, piped to claude stdin
+  #
+  #   2. Claude CLI (claude --print):
+  #      - --print: Non-interactive mode, outputs to stdout
+  #      - --permission-mode bypassPermissions: Uses pre-approved permissions
+  #      - Reads MCP tools from stdin
+  #      - Executes agent prompt
+  #
+  #   3. Permissions (.claude/settings.json):
+  #      - Pre-approved bash commands, file operations
+  #      - Agent reads this on startup
+  #      - No user prompts during execution
+  #
+  # Flow:
+  #   MCP server → stdout → claude stdin → agent execution → stdout → log
+  #
+  # Error Handling:
+  #   - Timeout after 30 minutes (AGENT_TIMEOUT)
+  #   - Automatic retry with exponential backoff (max 3 attempts)
+  #   - Failed triggers moved to .claude/triggers/processed/failed/
+  #
+  # Troubleshooting:
+  #   If "claude: command not found":
+  #     1. Install Claude Code CLI (https://docs.claude.com/claude-code)
+  #     2. Verify: which claude
+  #     3. Check PATH includes /usr/local/bin
+  #     4. Test: echo "test" | claude --print "respond"
+  #
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if timeout "$AGENT_TIMEOUT" "$CLAUDE_DIR/bin/mcp-server.sh" | claude \
     --print \
     --permission-mode bypassPermissions \
@@ -327,6 +389,11 @@ invoke_agent_with_retry() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # invoke_agent_parallel - Spawn agent in background with slot management
+#
+# NOTE: Parallel mode currently uses a WORKAROUND with simulated execution.
+# TODO: Implement real parallel execution using claude --print with proper
+#       background process management and stream-json output parsing.
+#
 # Usage: invoke_agent_parallel "trigger-file.trigger"
 # Returns: 0 if spawned, 1 if agent busy, 2 if parse error
 invoke_agent_parallel() {
@@ -375,11 +442,33 @@ invoke_agent_parallel() {
     # Log file for this agent execution
     local agent_log="$CLAUDE_DIR/logs/${to_agent}-$(date +%s).log"
 
-    # WORKAROUND: Daemon mode - agents run non-interactively
-    # TODO: Implement proper claude --print invocation with stream-json
-    # For now, we simulate successful execution
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # WORKAROUND: Parallel daemon mode uses simulation
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #
+    # CURRENT STATE: Agents run non-interactively with simulated execution
+    # to avoid blocking issues with parallel background processes.
+    #
+    # FUTURE WORK: Implement real parallel execution once stream-json output
+    # format is available in claude CLI. This will enable:
+    #   - Real-time progress monitoring
+    #   - Proper error handling
+    #   - Concurrent agent execution without blocking
+    #
+    # Simulation provides:
+    #   - Slot management (one agent instance per type)
+    #   - Round-robin trigger processing
+    #   - Basic error recovery
+    #
+    # TODO for real parallel execution:
+    #   1. Wait for claude --output-format stream-json support
+    #   2. Implement process_stream_output parser (see below)
+    #   3. Add real-time progress notifications
+    #   4. Handle agent crashes and cleanup
+    #
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    log_event "INFO" "$to_agent: Simulating agent execution (daemon mode workaround)" >> "$LOG_FILE"
+    log_event "INFO" "$to_agent: Simulating agent execution (parallel mode workaround)" >> "$LOG_FILE"
     echo "Agent: $to_agent" > "$agent_log"
     echo "Trigger: $(basename "$trigger_file")" >> "$agent_log"
     echo "Started: $(date)" >> "$agent_log"
@@ -392,14 +481,27 @@ invoke_agent_parallel() {
 
     exit 0
 
-    # FUTURE CODE (when claude --print is ready):
-    # claude --print \
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FUTURE CODE (when stream-json is ready):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #
+    # Real parallel agent invocation with stream parsing:
+    #
+    # "$CLAUDE_DIR/bin/mcp-server.sh" | claude --print \
     #   --permission-mode bypassPermissions \
     #   --output-format stream-json \
     #   "Use $to_agent agent. Process trigger: $(cat "$trigger_file")" \
     #   2>&1 | tee "$agent_log" | process_stream_output "$to_agent"
     #
     # exit ${PIPESTATUS[0]}
+    #
+    # This will enable:
+    #   - Real agent execution in background
+    #   - Streaming output for progress monitoring
+    #   - Proper exit code handling
+    #   - Concurrent multi-agent operation
+    #
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ) &
 
   # Save PID
