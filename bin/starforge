@@ -507,6 +507,41 @@ detect_active_agents() {
     return 0  # Active agents found
 }
 
+# Check file permissions
+check_permissions() {
+    local files_to_check=()
+    local non_executable=()
+
+    # Collect all files that should be executable
+    files_to_check+=(".claude/hooks/stop.py")
+
+    # Add all .sh files in scripts/, lib/, bin/
+    while IFS= read -r file; do
+        files_to_check+=("$file")
+    done < <(find .claude/scripts .claude/lib .claude/bin -name "*.sh" 2>/dev/null)
+
+    # Check each file for executable permission
+    for file in "${files_to_check[@]}"; do
+        if [ ! -x "$file" ]; then
+            non_executable+=("$file")
+        fi
+    done
+
+    if [ ${#non_executable[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Permissions correct${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Permission errors found${NC}"
+        echo "   Non-executable files:"
+        for file in "${non_executable[@]}"; do
+            echo "     - $file"
+        done
+        echo ""
+        echo "   Fix with: chmod +x <file>"
+        return 1
+    fi
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -1079,6 +1114,23 @@ case "$COMMAND" in
                 exit 1
                 ;;
         esac
+        ;;
+
+    doctor)
+        # Diagnostic tool to check StarForge installation health
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🏥 StarForge Doctor${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Run permission check
+        check_permissions
         ;;
 
     help|--help|-h)
