@@ -28,9 +28,10 @@ git checkout -b chore/update-version-X.Y.Z
 # - Update version number
 # - Update commit hash (get latest: git log -1 --format=%h)
 # - Update date (YYYY-MM-DD)
-# - Add changelog entries
-# - Add new_features array
-# - Add bug_fixes array
+# - Add changelog entries (array of strings)
+# - Update new_features array (objects with name, description, prs)
+# - Update bug_fixes array (objects with description, pr)
+# - Update breaking_changes array (if any)
 # - Update upgrade_notes
 
 # Commit
@@ -168,7 +169,7 @@ gh release view vX.Y.Z
 
 | Version | Date | Commit | Status |
 |---------|------|--------|--------|
-| v1.1.0 | 2025-10-28 | 2ee17ae | Pending (PR #290) |
+| v1.1.0 | 2025-10-28 | 2ee17ae | Released |
 | v1.0.0 | 2025-10-26 | c7390ca | Released |
 
 ## Example: Creating v1.1.0 Release
@@ -243,7 +244,7 @@ jobs:
 Users can check their installed version:
 
 ```bash
-# Check version file
+# Check installed version (deployed from templates/VERSION during install/update)
 cat .claude/STARFORGE_VERSION | jq -r '.version'
 
 # Check latest release
@@ -266,6 +267,10 @@ git tag -a v1.1.1 -m "Hotfix for v1.1.0 issues"
 git push origin v1.1.1
 
 # Or delete bad tag (if caught early)
+# First delete the GitHub Release
+gh release delete v1.1.0 --yes
+
+# Then delete the git tag
 git tag -d v1.1.0
 git push origin :refs/tags/v1.1.0
 ```
