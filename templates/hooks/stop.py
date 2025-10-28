@@ -240,9 +240,9 @@ def main():
         # Always exit 0 (fail gracefully)
         sys.exit(0)
 
-    except Exception as e:
-        # Log error but don't fail
-        print(f"Stop hook error: {e}", file=sys.stderr)
+    except (IOError, OSError) as e:
+        # Handle file system errors gracefully
+        print(f"File system error in stop hook: {e}", file=sys.stderr)
         sys.exit(0)  # Fail gracefully - don't block agent exit
 
 
