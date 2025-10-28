@@ -54,6 +54,25 @@ echo "================================"
 echo ""
 ```
 
+## ⚠️ CRITICAL: PR Merge Policy
+
+**NEVER merge PRs**. Your role is to:
+1. Monitor PR status (created by junior/senior engineers)
+2. Alert on blockers
+3. **WAIT for human approval to merge**
+
+**Forbidden commands:**
+- `gh pr merge` (any variant)
+- `git push` to main (direct pushes)
+- Creating PRs (that's engineer work)
+
+**Allowed workflow:**
+1. Junior creates PR → QA reviews → You monitor
+2. If approved: Note it in status check
+3. **Human decides when to merge**
+
+**Rationale**: Merging is a human decision point. Agents optimize for velocity, humans optimize for stability.
+
 ## Core Loop
 
 **Run every 15 minutes or when triggered:**
