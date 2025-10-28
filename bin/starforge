@@ -507,6 +507,35 @@ detect_active_agents() {
     return 0  # Active agents found
 }
 
+check_critical_files() {
+    local required_files=(
+        ".claude/CLAUDE.md"
+        ".claude/LEARNINGS.md"
+        ".claude/settings.json"
+        ".claude/hooks/stop.py"
+    )
+
+    local missing_files=()
+
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            missing_files+=("$file")
+        fi
+    done
+
+    if [ ${#missing_files[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Critical files present${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Critical files missing${NC}"
+        echo "   Missing files:"
+        for file in "${missing_files[@]}"; do
+            echo "     - $file"
+        done
+        return 1
+    fi
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -748,6 +777,33 @@ case "$COMMAND" in
 
         # Route to daemon lifecycle manager in user's .claude/bin/
         "./.claude/bin/daemon.sh" "$@"
+        ;;
+
+    doctor)
+        # Validate StarForge installation health
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🩺 StarForge Health Check${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Run critical files validation
+        if ! check_critical_files; then
+            echo ""
+            echo -e "${RED}Health check failed${NC}"
+            exit 1
+        fi
+
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${GREEN}✓ StarForge installation healthy${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
         ;;
 
     use)
