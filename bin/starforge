@@ -963,7 +963,23 @@ case "$COMMAND" in
         fi
 
         # LEARNINGS.md - always safe to update (system file)
-        cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
+        if [ -f "$CLAUDE_DIR/LEARNINGS.md" ]; then
+            # Check if file has been modified from template
+            if ! diff -q "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/LEARNINGS.md" > /dev/null 2>&1; then
+                # User has customized - preserve and copy new version alongside
+                cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/LEARNINGS.md.new"
+                echo -e "${WARN} ${YELLOW}LEARNINGS.md has user customizations - preserved${NC}"
+                echo -e "      ${YELLOW}New template saved as LEARNINGS.md.new for manual merge${NC}"
+            else
+                # Unchanged - safe to update
+                cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
+                echo -e "${CHECK} Updated LEARNINGS.md"
+            fi
+        else
+            # New installation - just copy
+            cp "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/"
+            echo -e "${CHECK} Added LEARNINGS.md"
+        fi
         echo -e "${CHECK} Updated protocol files"
 
         # Update settings with path replacement
