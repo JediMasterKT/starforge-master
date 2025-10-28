@@ -60,13 +60,14 @@ starforge help
 # Navigate to your project
 cd my-project
 
-# Install StarForge
+# Install StarForge (daemon auto-starts automatically)
 starforge install
 
 # Follow interactive prompts:
 # - GitHub remote setup (recommended)
 # - Number of junior-dev agents (1-5, default: 3)
 # - Proceed with installation
+# - Daemon starts automatically after successful install
 ```
 
 ### 3. Analyze Your Project (Existing Projects)
@@ -80,10 +81,9 @@ starforge analyze
 
 **Option A: Autonomous Mode** (Recommended - 24/7 operation)
 ```bash
-# Start the daemon
-starforge daemon start
+# Daemon is already running from install!
+# Just invoke agents - they work autonomously
 
-# Invoke agents - they work autonomously
 starforge use senior-engineer  # Create breakdown
 # (Agents automatically triggered: TPM → Orchestrator → Junior-devs → QA)
 
@@ -111,6 +111,7 @@ Installs StarForge in the current project. Creates:
 - `.claude/` directory with agents, scripts, hooks
 - Git worktrees for parallel development
 - Permissions and settings configuration
+- **Automatically starts the daemon for autonomous operation**
 
 **Prerequisites:**
 - Git installed
@@ -132,17 +133,21 @@ Launches Main Claude to analyze your project and generate:
 ### `starforge update`
 
 Updates StarForge agents and scripts from the latest templates.
+- **Automatically restarts the daemon after updating**
+- Ensures agents use the latest code without manual intervention
 
 **Interactive Mode** (default):
 ```bash
 starforge update
 # Shows diff preview, prompts for confirmation
+# Daemon automatically restarts after successful update
 ```
 
 **Non-Interactive Mode** (for automation/CI/CD):
 ```bash
 starforge update --force
 # Skips interactive prompt, applies changes immediately
+# Daemon automatically restarts after successful update
 ```
 
 Use `--force` when:
@@ -174,13 +179,23 @@ Starts the trigger monitor to watch agent handoffs in real-time. Run in a separa
 
 Manages the autonomous daemon for 24/7 agent operation. The daemon watches for triggers in the background and automatically invokes agents without user supervision.
 
+**Auto-Start Behavior:**
+- The daemon automatically starts when you run `starforge install`
+- The daemon automatically restarts when you run `starforge update`
+- This ensures agents can work autonomously without manual intervention
+- Manual daemon commands are only needed if you want to stop/restart the daemon
+
 **Commands:**
 ```bash
-starforge daemon start    # Start daemon in background
-starforge daemon stop     # Stop the daemon gracefully
-starforge daemon status   # Show daemon status and recent activity
-starforge daemon restart  # Restart the daemon
-starforge daemon logs     # Tail the daemon log file
+starforge daemon start           # Start daemon in background
+starforge daemon stop            # Stop the daemon gracefully
+starforge daemon status          # Show daemon status and recent activity
+starforge daemon restart         # Restart the daemon
+starforge daemon logs            # Tail the daemon log file
+
+# Flags (can be combined with commands):
+starforge daemon --silent start   # Start without output
+starforge daemon --check-only start  # Check if running without starting
 ```
 
 **Workflow Modes:**

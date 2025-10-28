@@ -775,6 +775,24 @@ case "$COMMAND" in
     install)
         # Run the installer
         "$STARFORGE_DIR/bin/install.sh" "$@"
+        INSTALL_EXIT_CODE=$?
+
+        # Auto-start daemon after successful install
+        if [ $INSTALL_EXIT_CODE -eq 0 ]; then
+            echo ""
+            echo -e "${BLUE}Starting StarForge daemon...${NC}"
+
+            # Start daemon silently (it will check if already running)
+            if "$STARFORGE_DIR/templates/bin/daemon.sh" --silent start; then
+                echo -e "${GREEN}✓ Daemon started successfully${NC}"
+                echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Could not start daemon automatically${NC}"
+                echo -e "${YELLOW}   Start manually: starforge daemon start${NC}"
+            fi
+        fi
+
+        exit $INSTALL_EXIT_CODE
         ;;
 
     update)
@@ -929,6 +947,20 @@ case "$COMMAND" in
         echo "  - Protocol files (CLAUDE.md, LEARNINGS.md)"
         echo "  - Settings (settings.json)"
         echo "  - Configuration templates (.env.example for Discord webhooks)"
+
+        # Auto-restart daemon after successful update
+        echo ""
+        echo -e "${BLUE}Restarting StarForge daemon...${NC}"
+
+        # Restart daemon silently (idempotent - will start if not running)
+        if "$CLAUDE_DIR/bin/daemon.sh" --silent restart 2>/dev/null || \
+           "$CLAUDE_DIR/bin/daemon.sh" --silent start 2>/dev/null; then
+            echo -e "${GREEN}✓ Daemon restarted successfully${NC}"
+            echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Could not restart daemon automatically${NC}"
+            echo -e "${YELLOW}   Restart manually: starforge daemon restart${NC}"
+        fi
         echo ""
         echo -e "${GREEN}Preserved:${NC}"
         echo "  - Agent learnings (.claude/agents/agent-learnings/)"
