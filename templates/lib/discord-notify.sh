@@ -163,22 +163,79 @@ EOF
 }
 
 #
-# send_agent_start_notification <agent> <action> <from_agent> <ticket>
+# send_agent_start_notification <agent> <action> <from_agent> <ticket> [message] [pr] [description]
 #
-# Convenience wrapper for agent start notifications.
+# Convenience wrapper for agent start notifications with rich context support.
+#
+# Args:
+#   agent: Agent name (e.g., "qa-engineer")
+#   action: Action type (e.g., "review_pr")
+#   from_agent: Agent that triggered this (e.g., "main-claude")
+#   ticket: Ticket number (default: N/A)
+#   message: (Optional) Rich message/title for the notification
+#   pr: (Optional) PR number to link to
+#   description: (Optional) Context/description text
+#
+# Example:
+#   send_agent_start_notification "qa-engineer" "review_pr" "main-claude" "310" \
+#     "Reviewing PR #304: daemon fix" "304" "Critical path bug fix"
 #
 send_agent_start_notification() {
   local agent=$1
   local action=$2
   local from_agent=$3
   local ticket=${4:-N/A}
+  local message=${5:-}
+  local pr=${6:-}
+  local description=${7:-}
+
+  # Build description (use message if provided, otherwise fallback)
+  local desc=""
+  if [ -n "$message" ]; then
+    desc="$message"
+  else
+    desc="**$agent** is now working"
+  fi
+
+  # Build fields array
+  local fields="["
+  fields="${fields}{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},"
+  fields="${fields}{\"name\":\"From\",\"value\":\"$from_agent\",\"inline\":true},"
+  fields="${fields}{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}"
+
+  # Add PR field if PR number provided and numeric
+  if [ -n "$pr" ] && [[ "$pr" =~ ^[0-9]+$ ]]; then
+    # Get repo name for PR link
+    local repo_name=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "owner/repo")
+    local pr_url="https://github.com/${repo_name}/pull/${pr}"
+    local pr_value="#${pr} → ${pr_url}"
+    fields="${fields},{\"name\":\"PR\",\"value\":\"$pr_value\",\"inline\":false}"
+  fi
+
+  # Add Context field if description provided (truncate if too long)
+  if [ -n "$description" ]; then
+    # Discord field value limit is 1024 chars
+    if [ ${#description} -gt 1000 ]; then
+      description="${description:0:1000}..."
+    fi
+    # Escape double quotes in description
+    description="${description//\"/\\\"}"
+    fields="${fields},{\"name\":\"Context\",\"value\":\"$description\",\"inline\":false}"
+  fi
+
+  fields="${fields}]"
 
   send_discord_daemon_notification \
     "$agent" \
     "🚀 Agent Started" \
-    "**$agent** is now working" \
+    "$desc" \
     "$COLOR_INFO" \
-    "[{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"From\",\"value\":\"$from_agent\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]"
+    "$fields"
+
+  # Return PR number for caller (if provided)
+  if [ -n "$pr" ] && [[ "$pr" =~ ^[0-9]+$ ]]; then
+    echo "$pr"
+  fi
 }
 
 #
