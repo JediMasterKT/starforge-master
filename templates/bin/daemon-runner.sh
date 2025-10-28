@@ -379,31 +379,57 @@ invoke_agent_parallel() {
     # Log file for this agent execution
     local agent_log="$CLAUDE_DIR/logs/${to_agent}-$(date +%s).log"
 
-    # WORKAROUND: Daemon mode - agents run non-interactively
-    # TODO: Implement proper claude --print invocation with stream-json
-    # For now, we simulate successful execution
+    # Real agent invocation via Claude CLI + MCP server
+    # The MCP server provides StarForge context (triggers, files, GitHub) to agents
+    # Claude CLI reads MCP server output and invokes the agent definition
 
-    log_event "INFO" "$to_agent: Simulating agent execution (daemon mode workaround)" >> "$LOG_FILE"
-    echo "Agent: $to_agent" > "$agent_log"
-    echo "Trigger: $(basename "$trigger_file")" >> "$agent_log"
-    echo "Started: $(date)" >> "$agent_log"
+    if [ "$REAL_AGENT_INVOCATION" = "true" ]; then
+      log_event "INVOKE" "Starting real $to_agent agent" >> "$LOG_FILE"
 
-    # Simulate agent work (2 second delay)
-    sleep 2
+      # Write basic metadata to agent log
+      echo "Agent: $to_agent" > "$agent_log"
+      echo "Trigger: $(basename "$trigger_file")" >> "$agent_log"
+      echo "Started: $(date)" >> "$agent_log"
+      echo "Mode: Real invocation (via MCP server + Claude CLI)" >> "$agent_log"
+      echo "" >> "$agent_log"
 
-    echo "Completed: $(date)" >> "$agent_log"
-    log_event "COMPLETE" "$to_agent completed (simulated)" >> "$LOG_FILE"
+      # Start MCP server (provides StarForge tools to Claude) and pipe to claude CLI
+      # - MCP server: Exposes trigger data, file reading, GitHub operations
+      # - claude --print: Non-interactive mode for daemon execution
+      # - bypassPermissions: Pre-authorized for automated workflow
+      # - Output redirected to agent_log for debugging
+      "$CLAUDE_DIR/bin/mcp-server.sh" | claude --print --permission-mode bypassPermissions >> "$agent_log" 2>&1
 
-    exit 0
+      local exit_code=$?
 
-    # FUTURE CODE (when claude --print is ready):
-    # claude --print \
-    #   --permission-mode bypassPermissions \
-    #   --output-format stream-json \
-    #   "Use $to_agent agent. Process trigger: $(cat "$trigger_file")" \
-    #   2>&1 | tee "$agent_log" | process_stream_output "$to_agent"
-    #
-    # exit ${PIPESTATUS[0]}
+      if [ $exit_code -eq 0 ]; then
+        echo "Completed: $(date)" >> "$agent_log"
+        log_event "COMPLETE" "$to_agent completed successfully" >> "$LOG_FILE"
+      else
+        echo "Failed: $(date)" >> "$agent_log"
+        echo "Exit code: $exit_code" >> "$agent_log"
+        log_event "ERROR" "$to_agent failed with exit code $exit_code" >> "$LOG_FILE"
+      fi
+
+      exit $exit_code
+
+    else
+      # Fallback: Simulation mode (for testing without Claude CLI)
+      # Useful for CI tests or environments without claude binary
+      log_event "INFO" "$to_agent: Running in simulation mode (REAL_AGENT_INVOCATION=false)" >> "$LOG_FILE"
+      echo "Agent: $to_agent" > "$agent_log"
+      echo "Trigger: $(basename "$trigger_file")" >> "$agent_log"
+      echo "Started: $(date)" >> "$agent_log"
+      echo "Mode: Simulation (REAL_AGENT_INVOCATION=false)" >> "$agent_log"
+
+      # Simulate agent work (2 second delay)
+      sleep 2
+
+      echo "Completed: $(date)" >> "$agent_log"
+      log_event "COMPLETE" "$to_agent completed (simulated)" >> "$LOG_FILE"
+
+      exit 0
+    fi
   ) &
 
   # Save PID
