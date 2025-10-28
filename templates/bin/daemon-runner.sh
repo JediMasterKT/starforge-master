@@ -253,6 +253,11 @@ invoke_agent() {
   local ticket=$(jq -r '.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
   local command=$(jq -r '.command // ""' "$trigger_file" 2>/dev/null || echo "")
 
+  # Extract context object and individual fields (issue #311)
+  local context_json=$(jq -c '.context // {}' "$trigger_file" 2>/dev/null || echo "{}")
+  local pr=$(jq -r '.context.pr // ""' "$trigger_file" 2>/dev/null || echo "")
+  local description=$(jq -r '.context.description // ""' "$trigger_file" 2>/dev/null || echo "")
+
   # Build prompt for agent
   local prompt="Task from $from_agent: $action"
   [ -n "$message" ] && prompt="$prompt\n\nMessage: $message"
