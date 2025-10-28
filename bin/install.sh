@@ -33,25 +33,90 @@ echo -e "${ROCKET} ${BLUE}StarForge - AI Development Team${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Function to check prerequisites
-check_prerequisites() {
-    echo -e "${INFO}Checking prerequisites..."
+# Function to check dependencies
+check_dependencies() {
+    local has_all_required=true
+    local platform=$(uname -s)
 
-    local all_good=true
+    echo -e "${BLUE}Checking dependencies...${NC}"
+    echo ""
 
-    # Check git
-    if command -v git &> /dev/null; then
-        echo -e "${CHECK} Git: $(git --version)"
-    else
-        echo -e "${ERROR} Git: not found"
-        all_good=false
+    # Required dependencies
+    local required_deps=("git" "jq" "gh")
+    local missing_required=()
+
+    for dep in "${required_deps[@]}"; do
+        if command -v "$dep" &> /dev/null; then
+            local version=$($dep --version 2>&1 | head -1)
+            echo -e "${GREEN}✓${NC} $dep: $version"
+        else
+            echo -e "${RED}✗${NC} $dep: NOT FOUND"
+            missing_required+=("$dep")
+            has_all_required=false
+        fi
+    done
+
+    # Optional dependencies
+    local optional_deps=("fswatch")
+
+    for dep in "${optional_deps[@]}"; do
+        if command -v "$dep" &> /dev/null; then
+            local version=$($dep --version 2>&1 | head -1)
+            echo -e "${GREEN}✓${NC} $dep: $version"
+        else
+            echo -e "${YELLOW}⚠${NC}  $dep: NOT FOUND (optional, needed for daemon mode)"
+        fi
+    done
+
+    echo ""
+
+    # If missing required dependencies, show install instructions
+    if [ "$has_all_required" = false ]; then
+        echo -e "${RED}❌ Missing required dependencies${NC}"
+        echo ""
+        echo "Install missing dependencies:"
+        echo ""
+
+        for dep in "${missing_required[@]}"; do
+            case "$platform" in
+                Darwin)
+                    echo -e "  ${YELLOW}$dep:${NC} brew install $dep"
+                    ;;
+                Linux)
+                    # Detect Linux distro
+                    if [ -f /etc/debian_version ]; then
+                        echo -e "  ${YELLOW}$dep:${NC} sudo apt-get install $dep"
+                    elif [ -f /etc/redhat-release ]; then
+                        echo -e "  ${YELLOW}$dep:${NC} sudo yum install $dep"
+                    else
+                        echo -e "  ${YELLOW}$dep:${NC} (install via your package manager)"
+                    fi
+                    ;;
+                *)
+                    echo -e "  ${YELLOW}$dep:${NC} (install via your package manager)"
+                    ;;
+            esac
+        done
+
+        echo ""
+        return 1
     fi
 
-    # Check GitHub CLI
-    if command -v gh &> /dev/null; then
-        echo -e "${CHECK} GitHub CLI: $(gh --version | head -1)"
+    echo -e "${GREEN}✓ All required dependencies installed${NC}"
+    echo ""
+    return 0
+}
 
-        # Check if authenticated
+# Legacy function for backward compatibility
+check_prerequisites() {
+    # Call the new dependency check function
+    if ! check_dependencies; then
+        echo -e "${ERROR} ${RED}Installation aborted: Missing dependencies${NC}"
+        exit 1
+    fi
+
+    # Additional checks for GitHub authentication (not blocking)
+    if command -v gh &> /dev/null; then
         if gh auth status &> /dev/null; then
             local username=$(gh api user -q .login 2>/dev/null || echo "authenticated")
             echo -e "${CHECK} GitHub Auth: $username"
@@ -59,60 +124,9 @@ check_prerequisites() {
             echo -e "${WARN}GitHub CLI: not authenticated"
             echo -e "   ${YELLOW}Run: gh auth login${NC}"
         fi
-    else
-        echo -e "${ERROR} GitHub CLI: not found"
-        echo -e "   ${YELLOW}Install from: https://cli.github.com${NC}"
-        all_good=false
-    fi
-
-    # Check jq
-    if command -v jq &> /dev/null; then
-        echo -e "${CHECK} jq: $(jq --version)"
-    else
-        echo -e "${ERROR} jq: not found"
-        echo -e "   ${YELLOW}Install: brew install jq${NC}"
-        all_good=false
-    fi
-
-    # Check terminal-notifier (optional but recommended)
-    if command -v terminal-notifier &> /dev/null; then
-        echo -e "${CHECK} terminal-notifier: installed"
-    else
-        echo -e "${INFO} terminal-notifier: not found (optional)"
-        echo -e "   ${YELLOW}Install: brew install terminal-notifier${NC}"
-    fi
-
-    # Check file watching tools (optional for trigger monitoring)
-    # fswatch (macOS) or inotifywait (Linux) required for automatic trigger monitoring
-    local has_file_watcher=false
-
-    if command -v fswatch &> /dev/null; then
-        echo -e "${CHECK} fswatch: installed"
-        has_file_watcher=true
-    else
-        echo -e "${INFO} fswatch: not found (optional for trigger monitoring)"
-        echo -e "   ${YELLOW}Install: brew install fswatch${NC}"
-    fi
-
-    if command -v inotifywait &> /dev/null; then
-        echo -e "${CHECK} inotifywait: installed"
-        has_file_watcher=true
-    else
-        echo -e "${INFO} inotifywait: not found (optional for trigger monitoring)"
-        echo -e "   ${YELLOW}Install: sudo apt-get install inotify-tools${NC}"
-    fi
-
-    if [ "$has_file_watcher" = false ]; then
-        echo -e "${WARN}No file watching tool detected (fswatch or inotifywait)"
-        echo -e "   ${YELLOW}Trigger monitoring will require manual mode${NC}"
     fi
 
     echo ""
-
-    if [ "$all_good" = false ]; then
-        echo -e "${ERROR} ${RED}Prerequisites missing. Please install required tools and try again.${NC}"
-        exit 1
-    fi
 }
 
 # Function to detect project type
