@@ -440,6 +440,51 @@ show_detailed_diff() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
+check_file_counts() {
+    local all_passed=true
+
+    # Check lib files
+    local expected_lib=11
+    local actual_lib=$(find .claude/lib -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_lib" -eq "$expected_lib" ]; then
+        echo -e "${GREEN}✅ Library files complete ($actual_lib/$expected_lib)${NC}"
+    else
+        echo -e "${RED}❌ Library files incomplete ($actual_lib/$expected_lib)${NC}"
+        # List what's expected vs what's found
+        echo "   Expected files in .claude/lib/:"
+        echo "     - discord-notify.sh, logger.sh, project-env.sh, router.sh"
+        echo "     - mcp-tools-*.sh (6 files), git-helpers.sh"
+        all_passed=false
+    fi
+
+    # Check bin files
+    local expected_bin=3
+    local actual_bin=$(find .claude/bin -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_bin" -eq "$expected_bin" ]; then
+        echo -e "${GREEN}✅ Bin files complete ($actual_bin/$expected_bin)${NC}"
+    else
+        echo -e "${RED}❌ Bin files incomplete ($actual_bin/$expected_bin)${NC}"
+        echo "   Expected: daemon.sh, daemon-runner.sh, update-helpers.sh"
+        all_passed=false
+    fi
+
+    # Check agent definitions
+    local expected_agents=5
+    local actual_agents=$(find .claude/agents -maxdepth 1 -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$actual_agents" -eq "$expected_agents" ]; then
+        echo -e "${GREEN}✅ Agent definitions present ($actual_agents/$expected_agents)${NC}"
+    else
+        echo -e "${RED}❌ Agent definitions incomplete ($actual_agents/$expected_agents)${NC}"
+        echo "   Expected: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent"
+        all_passed=false
+    fi
+
+    [ "$all_passed" = true ] && return 0 || return 1
+}
+
 detect_active_agents() {
     local claude_dir="$1"
 
@@ -1079,6 +1124,25 @@ case "$COMMAND" in
                 exit 1
                 ;;
         esac
+        ;;
+
+    doctor)
+        # Run health checks
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🏥 StarForge Health Check${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Run file counts check
+        check_file_counts
+
+        echo ""
         ;;
 
     help|--help|-h)
