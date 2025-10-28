@@ -507,6 +507,36 @@ detect_active_agents() {
     return 0  # Active agents found
 }
 
+# Check JSON configuration validity
+check_json_config() {
+    local settings_file=".claude/settings.json"
+
+    # Check file exists (redundant with check_critical_files but defensive)
+    if [ ! -f "$settings_file" ]; then
+        echo -e "${RED}❌ settings.json not found${NC}"
+        return 1
+    fi
+
+    # Check if valid JSON
+    if ! jq empty "$settings_file" 2>/dev/null; then
+        echo -e "${RED}❌ settings.json is not valid JSON${NC}"
+        echo "   Run 'jq . $settings_file' to see parse errors"
+        return 1
+    fi
+
+    # Check if hooks.Stop configuration exists
+    local has_stop_hook=$(jq -r '.hooks.Stop // empty' "$settings_file" 2>/dev/null)
+
+    if [ -z "$has_stop_hook" ]; then
+        echo -e "${RED}❌ JSON configuration incomplete${NC}"
+        echo "   Missing: hooks.Stop configuration"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ JSON configuration valid${NC}"
+    return 0
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
@@ -1079,6 +1109,28 @@ case "$COMMAND" in
                 exit 1
                 ;;
         esac
+        ;;
+
+    doctor)
+        # Validate StarForge installation health
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BLUE}🩺 StarForge Health Check${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Check JSON configuration
+        echo "Checking JSON configuration..."
+        if check_json_config; then
+            exit 0
+        else
+            exit 1
+        fi
         ;;
 
     help|--help|-h)
