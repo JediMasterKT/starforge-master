@@ -34,6 +34,19 @@ mkdir -p "$CLAUDE_DIR/daemon"
 # Touch log file
 touch "$LOG_FILE"
 
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Logging
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+log_event() {
+  local level=$1
+  local message=$2
+  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  echo "[$timestamp] $level: $message" >> "$LOG_FILE"
+  echo "[$timestamp] $level: $message" >&2
+}
+
 # Load environment variables (Discord webhooks, etc.)
 if [ -f "$PROJECT_ROOT/.env" ]; then
   source "$PROJECT_ROOT/.env"
@@ -60,19 +73,6 @@ if [ "$PARALLEL_DAEMON" = "true" ]; then
     PARALLEL_DAEMON=false
   fi
 fi
-
-#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Logging
-#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-log_event() {
-  local level=$1
-  local message=$2
-  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-  echo "[$timestamp] $level: $message" >> "$LOG_FILE"
-  echo "[$timestamp] $level: $message" >&2
-}
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # State Management
