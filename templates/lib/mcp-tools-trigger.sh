@@ -189,6 +189,14 @@ starforge_create_trigger() {
   # Get from_agent from environment
   local from_agent="${STARFORGE_AGENT_ID:-unknown}"
 
+  # Generate message field (human-readable description)
+  # Format action as human-readable message (replace underscores with spaces, capitalize first letter of each word)
+  local message=$(echo "$action" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+
+  # Generate command field (instruction for human to invoke next agent)
+  # Format: "Use <agent>. <brief instruction>."
+  local command="Use ${to_agent}. ${message}."
+
   # Generate unique trigger ID with epoch timestamp in nanoseconds for uniqueness
   # Using nanoseconds ensures uniqueness even for rapid consecutive calls
   local epoch_ns=$(date +%s%N)
@@ -208,11 +216,15 @@ starforge_create_trigger() {
     --arg from "$from_agent" \
     --arg to "$to_agent" \
     --arg act "$action" \
+    --arg msg "$message" \
+    --arg cmd "$command" \
     --argjson ctx "$context" \
     '{
       "from_agent": $from,
       "to_agent": $to,
       "action": $act,
+      "message": $msg,
+      "command": $cmd,
       "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
       "context": $ctx
     }' > "$trigger_file" 2>/dev/null; then
