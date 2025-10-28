@@ -398,7 +398,8 @@ invoke_agent_parallel() {
       # - claude --print: Non-interactive mode for daemon execution
       # - bypassPermissions: Pre-authorized for automated workflow
       # - Output redirected to agent_log for debugging
-      "$CLAUDE_DIR/bin/mcp-server.sh" | claude --print --permission-mode bypassPermissions >> "$agent_log" 2>&1
+      "$CLAUDE_DIR/bin/mcp-server.sh" | claude --print --permission-mode bypassPermissions \
+        "You are the $to_agent agent. Process this trigger: $trigger_content" >> "$agent_log" 2>&1
 
       local exit_code=$?
 
