@@ -8,6 +8,22 @@
 
 set -euo pipefail
 
+# Check bash version (need 4.0+ for associative arrays)
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    echo "❌ Error: Bash 4.0+ required (found ${BASH_VERSION})"
+    echo ""
+    echo "Your system has an outdated bash version."
+    echo ""
+    echo "To upgrade:"
+    echo "  macOS: brew install bash"
+    echo "  Linux: Usually bash 4+ is already installed"
+    echo ""
+    echo "After installing, ensure new bash is in your PATH:"
+    echo "  which bash  # Should show /usr/local/bin/bash or similar"
+    echo ""
+    exit 1
+fi
+
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -21,7 +37,6 @@ ARROW="${CYAN}→${NC}"
 
 # Discord API
 DISCORD_API_BASE="https://discord.com/api/v10"
-BOT_INVITE_URL="https://discord.com/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=536870912&scope=bot"
 
 # Channel names for StarForge agents
 declare -a CHANNEL_NAMES=(
@@ -44,11 +59,11 @@ declare -A WEBHOOK_URLS
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 log_info() {
-    echo -e "${BLUE}ℹ${NC}  $1"
+    echo -e "${BLUE}ℹ${NC}  $1" >&2
 }
 
 log_success() {
-    echo -e "${CHECK} $1"
+    echo -e "${CHECK} $1" >&2
 }
 
 log_error() {
@@ -56,7 +71,7 @@ log_error() {
 }
 
 log_warn() {
-    echo -e "${YELLOW}⚠${NC}  $1"
+    echo -e "${YELLOW}⚠${NC}  $1" >&2
 }
 
 spinner() {
@@ -84,35 +99,44 @@ spinner() {
 # Returns: bot token via stdout
 #
 get_bot_token() {
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 1: Discord Bot Token${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "You need a Discord bot token to set up StarForge notifications."
-    echo ""
-    echo "To get your bot token:"
-    echo "  1. Go to https://discord.com/developers/applications"
-    echo "  2. Create a new application (or select existing)"
-    echo "  3. Go to 'Bot' section"
-    echo "  4. Click 'Reset Token' or 'Copy' to get your token"
-    echo ""
-    echo -e "${YELLOW}Note: Keep this token secret! Never commit it to git.${NC}"
-    echo ""
+    echo "" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo -e "${BLUE}Step 1: Discord Bot Token${NC}" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo "" >&2
+    echo "You need a Discord bot token to set up StarForge notifications." >&2
+    echo "" >&2
+    echo "To get your bot token:" >&2
+    echo "  1. Go to https://discord.com/developers/applications" >&2
+    echo "  2. Create a new application (or select existing)" >&2
+    echo "  3. Go to 'Bot' section" >&2
+    echo "  4. Click 'Reset Token' or 'Copy' to get your token" >&2
+    echo "" >&2
+    echo -e "${YELLOW}Note: Keep this token secret! Never commit it to git.${NC}" >&2
+    echo "" >&2
 
     local bot_token=""
     while true; do
         read -sp "Paste your bot token: " bot_token
-        echo ""
+        echo "" >&2
 
         if [ -z "$bot_token" ]; then
             log_error "Bot token cannot be empty"
             continue
         fi
 
+        # Strip whitespace and newlines
+        bot_token=$(echo "$bot_token" | tr -d '[:space:]')
+
         # Basic validation: Discord bot tokens are usually 70+ characters
         if [ ${#bot_token} -lt 50 ]; then
             log_error "Token seems too short. Discord bot tokens are typically 70+ characters."
+            continue
+        fi
+
+        if [ ${#bot_token} -gt 100 ]; then
+            log_error "Token seems too long (${#bot_token} chars). Discord bot tokens are typically 70-72 characters."
+            log_error "Make sure you're copying ONLY the token, not the page content."
             continue
         fi
 
@@ -142,47 +166,53 @@ get_bot_token() {
 get_server_id() {
     local bot_token=$1
 
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 2: Create Discord Server${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "Please create a Discord server for StarForge:"
-    echo ""
-    echo "  1. Open Discord"
-    echo "  2. Click '+' (Create Server)"
-    echo "  3. Choose 'Create My Own'"
-    echo "  4. Name it: 'StarForge - $(basename "$PWD")'"
-    echo ""
+    # Get bot client ID to generate invite URL
+    local bot_info=$(curl -s -H "Authorization: Bot $bot_token" \
+        "$DISCORD_API_BASE/users/@me")
+    local bot_client_id=$(echo "$bot_info" | jq -r '.id')
+    local bot_invite_url="https://discord.com/oauth2/authorize?client_id=${bot_client_id}&permissions=536870912&scope=bot"
 
-    read -p "Press Enter when you've created the server..."
+    echo "" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo -e "${BLUE}Step 2: Create Discord Server${NC}" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo "" >&2
+    echo "Please create a Discord server for StarForge:" >&2
+    echo "" >&2
+    echo "  1. Open Discord" >&2
+    echo "  2. Click '+' (Create Server)" >&2
+    echo "  3. Choose 'Create My Own'" >&2
+    echo "  4. Name it: 'StarForge - $(basename "$PWD")'" >&2
+    echo "" >&2
 
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 3: Invite Bot to Server${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "Now invite the StarForge bot to your server:"
-    echo ""
-    echo "  1. Click this link: ${CYAN}${BOT_INVITE_URL}${NC}"
-    echo "  2. Select your newly created server"
-    echo "  3. Click 'Authorize'"
-    echo ""
+    read -p "Press Enter when you've created the server..." >&2
 
-    read -p "Press Enter when you've invited the bot..."
+    echo "" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo -e "${BLUE}Step 3: Invite Bot to Server${NC}" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo "" >&2
+    echo "Now invite the StarForge bot to your server:" >&2
+    echo "" >&2
+    echo -e "  1. Click this link: ${CYAN}${bot_invite_url}${NC}" >&2
+    echo "  2. Select your newly created server" >&2
+    echo "  3. Click 'Authorize'" >&2
+    echo "" >&2
 
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 4: Get Server ID${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "To get your server ID:"
-    echo "  1. Right-click your server icon"
-    echo "  2. Click 'Copy Server ID'"
-    echo "  3. Paste it below"
-    echo ""
-    echo -e "${YELLOW}Note: You need 'Developer Mode' enabled in Discord settings.${NC}"
-    echo ""
+    read -p "Press Enter when you've invited the bot..." >&2
+
+    echo "" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo -e "${BLUE}Step 4: Get Server ID${NC}" >&2
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" >&2
+    echo "" >&2
+    echo "To get your server ID:" >&2
+    echo "  1. Right-click your server icon" >&2
+    echo "  2. Click 'Copy Server ID'" >&2
+    echo "  3. Paste it below" >&2
+    echo "" >&2
+    echo -e "${YELLOW}Note: You need 'Developer Mode' enabled in Discord settings.${NC}" >&2
+    echo "" >&2
 
     local server_id=""
     while true; do
@@ -207,9 +237,9 @@ get_server_id() {
             return 0
         else
             log_error "Bot not found in that server. Please check:"
-            echo "  - Is the server ID correct?"
-            echo "  - Did you invite the bot using the link above?"
-            echo "  - Did you authorize the bot?"
+            echo "  - Is the server ID correct?" >&2
+            echo "  - Did you invite the bot using the link above?" >&2
+            echo "  - Did you authorize the bot?" >&2
         fi
     done
 }
@@ -229,7 +259,6 @@ verify_bot_in_server() {
         "$DISCORD_API_BASE/guilds/$server_id")
 
     local http_code=$(echo "$response" | tail -n1)
-    local body=$(echo "$response" | sed '$d')
 
     if [ "$http_code" = "200" ]; then
         return 0
@@ -554,7 +583,7 @@ main() {
     echo "  • Keep your .env file safe (never commit to git)"
     echo ""
     echo "Try it out:"
-    echo "  ${CYAN}starforge use senior-engineer${NC}"
+    echo -e "  ${CYAN}starforge use senior-engineer${NC}"
     echo ""
 }
 
