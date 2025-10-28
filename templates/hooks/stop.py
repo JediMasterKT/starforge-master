@@ -126,11 +126,20 @@ def get_next_trigger():
     # Get all .trigger files, sorted by embedded timestamp (oldest first)
     # Filenames are {agent}-{action}-{epoch}.trigger
     # Extract epoch for sorting to ensure FIFO order
+    # Filter to only valid trigger filenames (malformed triggers skipped)
+    valid_triggers = [
+        f for f in trigger_dir.glob("*.trigger")
+        if f.stem.split('-')[-1].isdigit()
+    ]
+
+    if not valid_triggers:
+        return None
+
     trigger_files = sorted(
-        trigger_dir.glob("*.trigger"),
-        key=lambda f: int(f.stem.split('-')[-1]) if f.stem.split('-')[-1].isdigit() else 0
+        valid_triggers,
+        key=lambda f: int(f.stem.split('-')[-1])
     )
-    return trigger_files[0] if trigger_files else None
+    return trigger_files[0]
 
 
 def process_trigger(trigger_file):
