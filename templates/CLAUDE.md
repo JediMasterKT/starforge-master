@@ -31,6 +31,77 @@
 
 ---
 
+## 🚨 FORBIDDEN: Review Documents & Development Artifacts
+
+**NEVER create or commit files matching:**
+- `docs/PR-*-REVIEW.md` - Review documents
+- `docs/PR-*-QA*.md` - QA reports
+- `docs/*-test-*.md` - Test results
+- `docs/daemon-*.md` - Daemon testing artifacts
+- `docs/phase*.md` - Phase analysis documents
+- Any review/analysis documents in PR branches
+
+**Why:**
+- Reviews belong in PR comments, NOT committed files
+- These waste compute, tokens, and repo space
+- They bloat PRs and production codebase
+- No value after PR merges
+
+**Reviews must be:**
+- ✅ Posted as PR comments (concise verdict + issues list)
+- ✅ Label updates (needs-review → qa-approved)
+- ❌ NEVER committed as docs/PR-*-REVIEW.md files
+
+**If you create a review document, YOU VIOLATED THIS RULE. Delete it immediately.**
+
+---
+
+## 🚨 CRITICAL: Always Create PRs for Production Changes
+
+**EVERY change to `templates/` MUST go through a PR.**
+
+**Process:**
+1. Create feature branch
+2. Make changes to `templates/`
+3. Commit changes
+4. Push branch
+5. **CREATE PR IMMEDIATELY** with `--label "needs-review"`
+6. Wait for review
+
+**NEVER:**
+- ❌ Commit to main directly
+- ❌ Push changes without creating PR
+- ❌ Say "changes committed" without providing PR URL
+
+**If you commit changes without creating PR, YOU VIOLATED THIS RULE.**
+
+---
+
+## 🚨 CRITICAL: PR Merge Rules
+
+**NEVER merge a PR without human approval.**
+
+### Merge Requirements
+
+A PR can ONLY be merged if:
+1. ✅ QA has approved (has `qa-approved` label)
+2. ✅ **Human has approved** (has `human-approved` label)
+3. ✅ CI is passing
+
+**If a PR does NOT have the `human-approved` label, DO NOT MERGE IT.**
+
+### Workflow
+
+1. Agent creates PR
+2. QA reviews and adds `qa-approved` label
+3. **STOP and report to user:** "PR #XXX is approved by QA and ready for your review"
+4. **WAIT for human to add `human-approved` label**
+5. Only after human approval: merge with `gh pr merge`
+
+**Breaking this rule is a critical error.**
+
+---
+
 ## MANDATORY: Agent Invocation Routine
 
 **Every agent MUST execute on invocation:**
