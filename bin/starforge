@@ -507,6 +507,39 @@ detect_active_agents() {
     return 0  # Active agents found
 }
 
+check_directory_structure() {
+    local required_dirs=(
+        ".claude"
+        ".claude/lib"
+        ".claude/bin"
+        ".claude/agents"
+        ".claude/hooks"
+        ".claude/scripts"
+        ".claude/triggers"
+        ".claude/logs"
+    )
+
+    local missing_dirs=()
+
+    for dir in "${required_dirs[@]}"; do
+        if [ ! -d "$dir" ]; then
+            missing_dirs+=("$dir")
+        fi
+    done
+
+    if [ ${#missing_dirs[@]} -eq 0 ]; then
+        echo -e "${GREEN}✅ Directory structure complete${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Directory structure incomplete${NC}"
+        echo "   Missing directories:"
+        for dir in "${missing_dirs[@]}"; do
+            echo "     - $dir"
+        done
+        return 1
+    fi
+}
+
 # Command dispatcher
 COMMAND="${1:-help}"
 shift || true
