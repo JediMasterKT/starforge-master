@@ -443,32 +443,59 @@ show_detailed_diff() {
 detect_active_agents() {
     local claude_dir="$1"
 
-    # Find active claude processes
-    # Look for: claude processes with agent-related arguments
-    local active_pids=$(pgrep -f "claude.*(junior|senior|qa|orchestrator|tpm)" 2>/dev/null || true)
+    # Find active claude processes in agent worktrees
+    # Strategy: Check for processes working in actual agent worktree directories
+    # Pattern: starforge-master-{junior-dev,senior,qa-engineer,orchestrator,tpm}-{a-z}
 
-    if [ -z "$active_pids" ]; then
-        return 1  # No active agents
+    # Get list of agent worktree paths from git
+    local agent_worktrees=$(git worktree list 2>/dev/null | \
+        grep -E "starforge-master-(junior-dev|senior|qa-engineer|orchestrator|tpm)-[a-z]" | \
+        awk '{print $1}' || true)
+
+    if [ -z "$agent_worktrees" ]; then
+        return 1  # No agent worktrees exist
     fi
 
+    local active_agents=()
+    local active_pids=()
+
+    # Check each agent worktree for active Claude processes
+    while IFS= read -r worktree_path; do
+        if [ -n "$worktree_path" ]; then
+            # Look for claude processes with this worktree path in their command line or cwd
+            # This catches: claude running in that directory via --directory flag or cd
+            local pids=$(pgrep -f "claude.*${worktree_path}" 2>/dev/null || true)
+
+            if [ -n "$pids" ]; then
+                # Extract agent name from worktree path
+                local agent_name=$(basename "$worktree_path")
+                active_agents+=("$agent_name")
+                active_pids+=("$pids")
+            fi
+        fi
+    done <<< "$agent_worktrees"
+
+    # No active agents found
+    if [ ${#active_agents[@]} -eq 0 ]; then
+        return 1
+    fi
+
+    # Active agents detected - show error
     echo -e "${RED}❌ Cannot update: Active agents detected${NC}"
     echo ""
     echo "Active agents:"
 
-    while IFS= read -r pid; do
-        if [ -n "$pid" ]; then
-            local cmd=$(ps -p "$pid" -o command= 2>/dev/null || echo "unknown")
-            # Extract agent name from command
-            local agent="unknown"
-            if [[ "$cmd" =~ junior ]]; then agent="junior-engineer"; fi
-            if [[ "$cmd" =~ senior ]]; then agent="senior-engineer"; fi
-            if [[ "$cmd" =~ qa ]]; then agent="qa-engineer"; fi
-            if [[ "$cmd" =~ orchestrator ]]; then agent="orchestrator"; fi
-            if [[ "$cmd" =~ tpm ]]; then agent="tpm-agent"; fi
+    for i in "${!active_agents[@]}"; do
+        local agent="${active_agents[$i]}"
+        local pids="${active_pids[$i]}"
 
-            echo -e "  ${YELLOW}•${NC} PID $pid: $agent"
-        fi
-    done <<< "$active_pids"
+        # Show each PID for this agent
+        while IFS= read -r pid; do
+            if [ -n "$pid" ]; then
+                echo -e "  ${YELLOW}•${NC} PID $pid: $agent"
+            fi
+        done <<< "$pids"
+    done
 
     echo ""
     echo "Options:"
@@ -500,7 +527,9 @@ case "$COMMAND" in
                     shift
                     ;;
                 *)
-                    shift
+                    echo -e "${RED}❌ Unknown flag: $1${NC}" >&2
+                    echo -e "   Usage: starforge update [--force|-f]" >&2
+                    exit 1
                     ;;
             esac
         done
