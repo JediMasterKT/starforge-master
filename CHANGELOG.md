@@ -16,14 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING**: Daemon now requires Claude Code CLI (`claude`) installed and in PATH
-- Daemon agent invocation now uses real `claude` CLI instead of simulation
+- Daemon agent invocation now uses real `claude` CLI instead of simulation (sequential mode only)
 - Updated daemon invocation to use `--print` flag for non-interactive execution
 - Improved error messages when `claude` CLI is not found
 - Enhanced daemon logging to show real agent execution
 
 ### Fixed
 - Removed simulation/workaround code from sequential daemon execution
-- Corrected claude CLI invocation flags (removed invalid `--mcp stdio`, added `--print`)
 - Fixed TTY requirement for daemon background operation
 
 ### Documentation
@@ -102,7 +101,7 @@ If you were using an earlier version of StarForge with daemon simulation:
 
 - **Claude CLI Required**: The daemon now requires the Claude Code CLI (`claude`) to be installed and available in PATH. Previously, the daemon used a simulation mode that did not require this.
 
-- **No Simulation Mode**: The `PARALLEL_DAEMON` feature flag's simulation workaround has been removed in favor of real agent execution. All agent invocations now use `claude --print`.
+- **Sequential Mode Only**: Real agent execution using `claude --print` is currently implemented for sequential mode only. Parallel mode still uses simulation while waiting for `--output-format stream-json` support in the Claude CLI (see daemon-runner.sh line 457 for details).
 
 - **MCP Server Required**: The daemon expects `.claude/bin/mcp-server.sh` to be present and executable. Run `starforge update` to deploy this if missing.
 
@@ -113,3 +112,7 @@ If you were using an earlier version of StarForge with daemon simulation:
 - Git worktree structure unchanged
 - GitHub integration remains the same
 - All `starforge` CLI commands work identically
+
+### Known Issues
+
+- Test suite (`tests/test_daemon_mcp_integration.sh`) expects deprecated `--mcp stdio` flag but implementation uses `--print`. Test updates are tracked separately.
