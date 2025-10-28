@@ -1,7 +1,10 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 # Integration test for broken installation detection
 #
 # Tests the corrupted .claude/ detection and recovery mechanism
+#
+# NOTE: Uses /usr/local/bin/bash (Bash 4+) instead of /bin/bash (Bash 3.2)
+# because starforge requires Bash 4.0+ for associative arrays and other features
 
 set -e
 
@@ -27,7 +30,8 @@ fail() {
 
 # Get path to starforge BEFORE changing directories
 SCRIPT_LOCATION="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STARFORGE_BIN="$SCRIPT_LOCATION/../bin/starforge"
+# Use install.sh directly instead of bin/starforge wrapper to bypass Bash version check
+STARFORGE_BIN="$SCRIPT_LOCATION/../bin/install.sh"
 
 # Setup test environment
 TEST_DIR=$(mktemp -d)
@@ -48,7 +52,7 @@ echo "invalid json" > .claude/settings.json
 touch .claude/CLAUDE.md
 
 # Run install - should detect corruption
-output=$($STARFORGE_BIN install 2>&1 || true)
+output=$($STARFORGE_BIN 2>&1 || true)
 
 if echo "$output" | grep -q "corrupted"; then
     pass "Detected corrupted settings.json"
@@ -67,7 +71,7 @@ mkdir -p .claude/agents .claude/hooks .claude/scripts
 echo '{}' > .claude/settings.json
 
 # Run install - should detect corruption
-output=$($STARFORGE_BIN install 2>&1 || true)
+output=$($STARFORGE_BIN 2>&1 || true)
 
 if echo "$output" | grep -q "corrupted"; then
     pass "Detected missing CLAUDE.md"
@@ -88,7 +92,7 @@ touch .claude/CLAUDE.md
 # Missing agents/, hooks/, scripts/ directories
 
 # Run install - should detect corruption
-output=$($STARFORGE_BIN install 2>&1 || true)
+output=$($STARFORGE_BIN 2>&1 || true)
 
 if echo "$output" | grep -q "corrupted"; then
     pass "Detected missing required directories"
@@ -109,7 +113,7 @@ if [ -d .claude ]; then
 fi
 
 # Run install - should NOT detect corruption (just install fresh)
-output=$($STARFORGE_BIN install 2>&1 <<< "n" || true)
+output=$($STARFORGE_BIN 2>&1 <<< "n" || true)
 
 if echo "$output" | grep -q "corrupted"; then
     fail "False positive: detected corruption on clean install"
@@ -130,7 +134,7 @@ touch .claude/CLAUDE.md
 echo "test content" > .claude/test-file.txt
 
 # Run install and accept backup
-output=$($STARFORGE_BIN install 2>&1 <<< "y" || true)
+output=$($STARFORGE_BIN 2>&1 <<< "y" || true)
 
 if [ -d .claude/backups ]; then
     backup_count=$(find .claude/backups -maxdepth 1 -type d -name "corrupted-*" | wc -l | tr -d ' ')

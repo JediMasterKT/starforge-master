@@ -261,6 +261,34 @@ backup_corrupted_installation() {
 
     echo -e "${YELLOW}Found corrupted installation at $claude_dir${NC}"
     echo ""
+
+    # TTY Check: Detects if running non-interactively (tests, CI/CD, piped input)
+    # [ ! -t 0 ] returns true when stdin is NOT a terminal
+    # In non-interactive mode, we auto-proceed to avoid hanging
+    if [ ! -t 0 ]; then
+        # Non-interactive mode: auto-proceed with backup
+        echo "Non-interactive mode detected - proceeding with backup automatically"
+        echo -e "${BLUE}Creating backup...${NC}"
+        mkdir -p "$backup_dir"
+
+        # Copy all existing .claude contents to backup (excluding backups dir itself)
+        find "$claude_dir" -maxdepth 1 ! -name backups ! -path "$claude_dir" -exec cp -r {} "$backup_dir/" \; 2>/dev/null || true
+
+        local file_count=$(find "$backup_dir" -type f | wc -l | tr -d ' ')
+        echo -e "${GREEN}${CHECK} Backed up $file_count files to:${NC}"
+        echo "  $backup_dir"
+        echo ""
+
+        echo -e "${BLUE}Removing corrupted installation...${NC}"
+        # Remove everything except backups directory
+        find "$claude_dir" -maxdepth 1 ! -name backups ! -path "$claude_dir" -exec rm -rf {} \; 2>/dev/null || true
+        echo -e "${GREEN}${CHECK} Removed corrupted installation${NC}"
+        echo ""
+
+        return 0  # Proceed with install
+    fi
+
+    # Interactive mode: prompt user
     echo "Options:"
     echo "  1. Backup corrupted files and reinstall (recommended)"
     echo "  2. Abort installation"
