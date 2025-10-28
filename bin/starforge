@@ -962,7 +962,7 @@ case "$COMMAND" in
             echo -e "${CHECK} Added CLAUDE.md"
         fi
 
-        # LEARNINGS.md - always safe to update (system file)
+        # LEARNINGS.md - preserve if user has customized it
         if [ -f "$CLAUDE_DIR/LEARNINGS.md" ]; then
             # Check if file has been modified from template
             if ! diff -q "$STARFORGE_DIR/templates/LEARNINGS.md" "$CLAUDE_DIR/LEARNINGS.md" > /dev/null 2>&1; then
