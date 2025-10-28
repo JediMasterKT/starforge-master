@@ -143,11 +143,18 @@ EOF
 #
 # Creates a trigger file for agent handoffs with validation and atomic write.
 # Auto-populates from_agent from STARFORGE_AGENT_ID environment variable.
+# Auto-generates command and message fields required by stop hook.
 #
 # Args:
 #   $1 - to_agent (required): Target agent to receive trigger
-#   $2 - action (required): Action for target agent to perform
+#   $2 - action (required): Action for target agent to perform (e.g., "review_pr")
 #   $3 - context (optional): JSON object with metadata (default: {})
+#
+# Generated Fields:
+#   - message: Auto-generated from action (e.g., "review_pr" → "Review Pr")
+#   - command: Auto-generated as "Use <agent>. <message>." for human invocation
+#   - from_agent: Auto-populated from STARFORGE_AGENT_ID environment variable
+#   - timestamp: Auto-generated ISO 8601 UTC timestamp
 #
 # Returns:
 #   JSON object with:
@@ -160,10 +167,16 @@ EOF
 #
 # Examples:
 #   starforge_create_trigger "qa-engineer" "review_pr" '{"pr": 42, "ticket": 100}'
-#   # => {"trigger_file": "/path/.claude/triggers/qa-engineer-review_pr-1234567890.trigger", "trigger_id": "qa-engineer-review_pr-1234567890"}
+#   # => Creates trigger with:
+#   #    - message: "Review Pr"
+#   #    - command: "Use qa-engineer. Review Pr."
+#   #    - context: {"pr": 42, "ticket": 100}
 #
 #   starforge_create_trigger "orchestrator" "assign_tickets" '{}'
-#   # => {"trigger_file": "/path/.claude/triggers/orchestrator-assign_tickets-1234567891.trigger", "trigger_id": "orchestrator-assign_tickets-1234567891"}
+#   # => Creates trigger with:
+#   #    - message: "Assign Tickets"
+#   #    - command: "Use orchestrator. Assign Tickets."
+#   #    - context: {}
 #
 starforge_create_trigger() {
   local to_agent="$1"
@@ -189,6 +202,14 @@ starforge_create_trigger() {
   # Get from_agent from environment
   local from_agent="${STARFORGE_AGENT_ID:-unknown}"
 
+  # Generate message field (human-readable description)
+  # Format action as human-readable message (replace underscores with spaces, capitalize first letter of each word)
+  local message=$(echo "$action" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+
+  # Generate command field (instruction for human to invoke next agent)
+  # Format: "Use <agent>. <brief instruction>."
+  local command="Use ${to_agent}. ${message}."
+
   # Generate unique trigger ID with epoch timestamp in nanoseconds for uniqueness
   # Using nanoseconds ensures uniqueness even for rapid consecutive calls
   local epoch_ns=$(date +%s%N)
@@ -208,11 +229,15 @@ starforge_create_trigger() {
     --arg from "$from_agent" \
     --arg to "$to_agent" \
     --arg act "$action" \
+    --arg msg "$message" \
+    --arg cmd "$command" \
     --argjson ctx "$context" \
     '{
       "from_agent": $from,
       "to_agent": $to,
       "action": $act,
+      "message": $msg,
+      "command": $cmd,
       "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
       "context": $ctx
     }' > "$trigger_file" 2>/dev/null; then
