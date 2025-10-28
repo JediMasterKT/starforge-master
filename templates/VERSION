@@ -1,13 +1,65 @@
 {
-  "version": "1.0.0",
-  "commit": "c7390ca",
-  "date": "2025-10-26",
+  "version": "1.1.0",
+  "commit": "2ee17ae",
+  "date": "2025-10-28",
   "changelog": [
-    "Initial StarForge release",
-    "Multi-agent development system",
-    "Orchestrator, Senior Engineer, Junior Engineer, QA Engineer, TPM",
-    "Autonomous daemon with trigger-based handoffs",
-    "GitHub integration for issues and PRs"
+    "Real daemon invocation with Claude CLI (replaces simulation)",
+    "Discord integration with auto-setup wizard",
+    "Daemon auto-start on install/update",
+    "Enhanced parallel mode with full Discord notifications",
+    "Version detection and safe migration system",
+    "Settings.json security fixes (project bin/ directories allowed)",
+    "Comprehensive starforge doctor diagnostics",
+    "Daemon status monitoring and lifecycle notifications",
+    "Integration tests for daemon and auto-start",
+    "Portable trigger FIFO sorting (GNU/BSD compatibility)",
+    "Complete daemon documentation in README"
   ],
-  "breaking_changes": []
+  "breaking_changes": [],
+  "new_features": [
+    {
+      "name": "Real Daemon Invocation",
+      "description": "Daemon now invokes real Claude CLI agents instead of simulation",
+      "prs": ["#280", "#281", "#282"]
+    },
+    {
+      "name": "Discord Integration",
+      "description": "Full Discord notification system with auto-setup wizard",
+      "prs": ["#283", "#287"]
+    },
+    {
+      "name": "Daemon Auto-Start",
+      "description": "Daemon automatically starts on install/update",
+      "prs": ["#284", "#288"]
+    },
+    {
+      "name": "Version Detection & Migration",
+      "description": "Safe updates with automatic migration from pre-1.0.0",
+      "prs": ["#255", "#289"]
+    },
+    {
+      "name": "StarForge Doctor",
+      "description": "Comprehensive diagnostics for troubleshooting",
+      "prs": ["#272"]
+    }
+  ],
+  "bug_fixes": [
+    {
+      "description": "Fixed settings.json deny rules blocking project bin/ directories",
+      "pr": "#286"
+    },
+    {
+      "description": "Fixed trigger FIFO sorting for BSD compatibility",
+      "pr": "#277"
+    },
+    {
+      "description": "Fixed daemon log_event function definition order",
+      "pr": "#278"
+    },
+    {
+      "description": "Fixed Claude CLI invocation in daemon-runner",
+      "pr": "#274"
+    }
+  ],
+  "upgrade_notes": "Run 'starforge update' to upgrade. Migration from pre-1.0.0 and 1.0.0 is automatic and non-destructive."
 }
