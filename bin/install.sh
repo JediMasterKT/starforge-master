@@ -210,6 +210,89 @@ configure_git_remote() {
     echo ""
 }
 
+# Function to detect corrupted .claude installation
+detect_corrupted_installation() {
+    local claude_dir="$1"
+
+    # Check if .claude exists but is corrupted
+    if [ ! -d "$claude_dir" ]; then
+        return 1  # Not corrupted, just doesn't exist
+    fi
+
+    # Check for critical files and directories
+    local is_corrupted=false
+
+    # Missing settings.json
+    if [ ! -f "$claude_dir/settings.json" ]; then
+        is_corrupted=true
+    fi
+
+    # Malformed settings.json
+    if [ -f "$claude_dir/settings.json" ]; then
+        if ! jq empty "$claude_dir/settings.json" 2>/dev/null; then
+            is_corrupted=true
+        fi
+    fi
+
+    # Missing CLAUDE.md
+    if [ ! -f "$claude_dir/CLAUDE.md" ]; then
+        is_corrupted=true
+    fi
+
+    # Missing required directories
+    for dir in agents hooks scripts; do
+        if [ ! -d "$claude_dir/$dir" ]; then
+            is_corrupted=true
+        fi
+    done
+
+    if [ "$is_corrupted" = true ]; then
+        return 0  # Corrupted
+    else
+        return 1  # Not corrupted
+    fi
+}
+
+# Function to backup corrupted installation and offer reinstall
+backup_corrupted_installation() {
+    local claude_dir="$1"
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local backup_dir="$claude_dir/backups/corrupted-$timestamp"
+
+    echo -e "${YELLOW}Found corrupted installation at $claude_dir${NC}"
+    echo ""
+    echo "Options:"
+    echo "  1. Backup corrupted files and reinstall (recommended)"
+    echo "  2. Abort installation"
+    echo ""
+    read -p "Backup and reinstall? [y/n]: " -n 1 -r choice
+    echo ""
+
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Creating backup...${NC}"
+        mkdir -p "$backup_dir"
+
+        # Copy all existing .claude contents to backup (excluding backups dir itself)
+        find "$claude_dir" -maxdepth 1 ! -name backups ! -path "$claude_dir" -exec cp -r {} "$backup_dir/" \; 2>/dev/null || true
+
+        local file_count=$(find "$backup_dir" -type f | wc -l | tr -d ' ')
+        echo -e "${GREEN}${CHECK} Backed up $file_count files to:${NC}"
+        echo "  $backup_dir"
+        echo ""
+
+        echo -e "${BLUE}Removing corrupted installation...${NC}"
+        # Remove everything except backups directory
+        find "$claude_dir" -maxdepth 1 ! -name backups ! -path "$claude_dir" -exec rm -rf {} \; 2>/dev/null || true
+        echo -e "${GREEN}${CHECK} Removed corrupted installation${NC}"
+        echo ""
+
+        return 0  # Proceed with install
+    else
+        echo -e "${RED}Installation aborted${NC}"
+        return 1  # Don't proceed
+    fi
+}
+
 # Function to create directory structure
 create_structure() {
     echo -e "${INFO}Creating .claude/ directory structure..."
@@ -365,6 +448,14 @@ update_gitignore() {
 # Main installation flow
 main() {
     check_prerequisites
+
+    # Check for corrupted installation BEFORE doing anything else
+    if detect_corrupted_installation "$CLAUDE_DIR"; then
+        if ! backup_corrupted_installation "$CLAUDE_DIR"; then
+            exit 1  # User chose to abort
+        fi
+    fi
+
     detect_project_type
 
     if [ "$HAS_GIT" = false ]; then
