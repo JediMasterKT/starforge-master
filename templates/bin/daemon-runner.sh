@@ -478,9 +478,11 @@ monitor_running_agents() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 get_next_trigger() {
-  # Get oldest .trigger file by creation time (FIFO)
-  find "$TRIGGER_DIR" -maxdepth 1 -name "*.trigger" -type f \
-    -exec stat -f "%B %N" {} \; 2>/dev/null | \
+  # Get oldest .trigger file by embedded timestamp (FIFO)
+  # Filenames are {agent}-{action}-{epoch}.trigger
+  # Extract epoch, sort numerically, return corresponding file
+  find "$TRIGGER_DIR" -maxdepth 1 -name "*.trigger" -type f 2>/dev/null | \
+    sed 's/.*-\([0-9]*\)\.trigger$/\1 &/' | \
     sort -n | \
     head -1 | \
     cut -d' ' -f2-

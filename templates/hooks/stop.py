@@ -123,8 +123,13 @@ def get_next_trigger():
     if not trigger_dir.exists():
         return None
 
-    # Get all .trigger files, sorted by creation time (oldest first)
-    trigger_files = sorted(trigger_dir.glob("*.trigger"))
+    # Get all .trigger files, sorted by embedded timestamp (oldest first)
+    # Filenames are {agent}-{action}-{epoch}.trigger
+    # Extract epoch for sorting to ensure FIFO order
+    trigger_files = sorted(
+        trigger_dir.glob("*.trigger"),
+        key=lambda f: int(f.stem.split('-')[-1]) if f.stem.split('-')[-1].isdigit() else 0
+    )
     return trigger_files[0] if trigger_files else None
 
 
