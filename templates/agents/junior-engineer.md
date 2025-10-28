@@ -522,7 +522,11 @@ PR_BODY="## Changes
 
 gh pr create \
   --title "feat: Implement #${TICKET}" \
-  --body "$PR_BODY"
+  --body "$PR_BODY" \
+  --label "needs-review"
+
+# NOTE: The 'needs-review' label triggers a required GitHub status check
+# that blocks merge until qa-engineer removes it after review approval
 
 # Get PR number and URL
 PR_NUMBER=$(gh pr view --json number -q .number)
@@ -533,9 +537,9 @@ PR_URL=$(gh pr view --json url -q .url)
 # Get PR URL for Discord notification
 PR_URL=$(gh pr view $PR_NUMBER --json url -q .url)
 
-# Add needs-review label
-gh pr edit $PR_NUMBER --add-label "needs-review"
-echo "✅ Added 'needs-review' label to PR #$PR_NUMBER"
+# NOTE: 'needs-review' label was added at PR creation time (--label flag)
+# This label triggers a required status check that blocks merge until QA approval
+echo "✅ PR #$PR_NUMBER created with 'needs-review' label (blocks merge until QA approval)"
 
 # Notify user via Discord (mobile notification)
 source "${STARFORGE_CLAUDE_DIR}/lib/router.sh"

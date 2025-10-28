@@ -1,0 +1,28 @@
+name: Require QA Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+
+jobs:
+  check-qa-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for needs-review label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+
+            if (labels.includes('needs-review')) {
+              core.setFailed('❌ QA review required - PR has "needs-review" label\n\n' +
+                'This PR cannot be merged until qa-engineer removes the "needs-review" label.\n' +
+                'The qa-engineer will:\n' +
+                '  1. Review the PR\n' +
+                '  2. Remove "needs-review" label if approved\n' +
+                '  3. Add "qa-approved" label\n\n' +
+                'Status: Waiting for QA review to complete');
+            } else {
+              core.info('✅ QA review complete - no "needs-review" label found\n\n' +
+                'This PR is ready for merge.');
+            }
