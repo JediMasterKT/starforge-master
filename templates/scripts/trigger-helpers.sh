@@ -25,6 +25,15 @@ LOG_FILE="$STARFORGE_CLAUDE_DIR/trigger-history.log"
 mkdir -p "$TRIGGER_DIR"
 mkdir -p "$TRIGGER_DIR/processed"
 
+# Generate unique trace ID for end-to-end workflow tracking
+# Format: TRACE-{timestamp}-{random_hex}
+# Example: TRACE-1234567890-a3f9b2
+generate_trace_id() {
+  local timestamp=$(date +%s)
+  local random_hex=$(openssl rand -hex 3 2>/dev/null || echo "$(printf '%06x' $RANDOM)")
+  echo "TRACE-${timestamp}-${random_hex}"
+}
+
 # Generic trigger creation
 create_trigger() {
   local from_agent=$1
@@ -34,12 +43,14 @@ create_trigger() {
   local command=$5
   shift 5
   local context="$@"
-  
+
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local trace_id=$(generate_trace_id)
   local trigger_file="$TRIGGER_DIR/${to_agent}-${action}-$(date +%s).trigger"
-  
+
   cat > "$trigger_file" << TRIGGER
 {
+  "trace_id": "$trace_id",
   "from_agent": "$from_agent",
   "to_agent": "$to_agent",
   "action": "$action",

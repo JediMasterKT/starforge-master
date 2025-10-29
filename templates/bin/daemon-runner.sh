@@ -42,10 +42,12 @@ touch "$LOG_FILE"
 log_event() {
   local level=$1
   local message=$2
+  local trace_id=${3:-""}
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-  echo "[$timestamp] $level: $message" >> "$LOG_FILE"
-  echo "[$timestamp] $level: $message" >&2
+  # Always include trace_id in log (empty if not provided)
+  echo "[$timestamp] [$trace_id] $level: $message" >> "$LOG_FILE"
+  echo "[$timestamp] [$trace_id] $level: $message" >&2
 }
 
 # Load environment variables (Discord webhooks, etc.)
@@ -230,21 +232,22 @@ invoke_agent() {
   local to_agent=$(jq -r '.to_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local from_agent=$(jq -r '.from_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
+  local trace_id=$(jq -r '.trace_id' "$trigger_file" 2>/dev/null || echo "")
 
   if [ "$to_agent" = "unknown" ] || [ "$to_agent" = "null" ]; then
-    log_event "ERROR" "Missing 'to_agent' field in $(basename "$trigger_file")"
+    log_event "ERROR" "Missing 'to_agent' field in $(basename "$trigger_file")" "$trace_id"
     return 2  # Parse error
   fi
 
-  # Log invocation
-  log_event "INVOKE" "$from_agent → $to_agent ($action)"
+  # Log invocation with trace ID for end-to-end tracking
+  log_event "INVOKE" "$from_agent → $to_agent ($action)" "$trace_id"
 
   # Invoke agent with timeout
   local start_time=$(date +%s)
 
   # Check if starforge command exists
   if ! command -v starforge &> /dev/null; then
-    log_event "ERROR" "starforge command not found in PATH"
+    log_event "ERROR" "starforge command not found in PATH" "$trace_id"
     return 1
   fi
 
@@ -266,11 +269,11 @@ invoke_agent() {
   prompt="$prompt\n\nTrigger file: $trigger_file"
 
   # Log real agent execution (not simulation)
-  log_event "EXECUTE" "Real agent invocation: $to_agent via claude --print"
+  log_event "EXECUTE" "Real agent invocation: $to_agent via claude --print" "$trace_id"
 
   # Send agent start notification (if Discord configured)
   if type send_agent_start_notification &>/dev/null; then
-    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" "$message" "$pr" "$description"
+    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" "$trace_id"
   fi
 
   # Start background progress monitor
@@ -320,7 +323,7 @@ invoke_agent() {
     --permission-mode bypassPermissions \
     "Use the $to_agent agent. $prompt" >> "$LOG_FILE" 2>&1; then
     local duration=$(($(date +%s) - start_time))
-    log_event "COMPLETE" "$to_agent completed in ${duration}s"
+    log_event "COMPLETE" "$to_agent completed in ${duration}s" "$trace_id"
 
     # Kill progress monitor
     kill $MONITOR_PID 2>/dev/null || true
@@ -329,7 +332,7 @@ invoke_agent() {
     if type send_agent_complete_notification &>/dev/null; then
       local duration_min=$((duration / 60))
       local duration_sec=$((duration % 60))
-      send_agent_complete_notification "$to_agent" "$duration_min" "$duration_sec" "$action" "$ticket"
+      send_agent_complete_notification "$to_agent" "$duration_min" "$duration_sec" "$action" "$ticket" "$trace_id"
     fi
 
     return 0
@@ -341,19 +344,19 @@ invoke_agent() {
     kill $MONITOR_PID 2>/dev/null || true
 
     if [ $exit_code -eq 124 ]; then
-      log_event "ERROR" "$to_agent timed out after ${AGENT_TIMEOUT}s"
+      log_event "ERROR" "$to_agent timed out after ${AGENT_TIMEOUT}s" "$trace_id"
 
       # Send timeout notification (if Discord configured)
       if type send_agent_timeout_notification &>/dev/null; then
-        send_agent_timeout_notification "$to_agent" "$action" "$ticket"
+        send_agent_timeout_notification "$to_agent" "$action" "$ticket" "$trace_id"
       fi
     else
-      log_event "ERROR" "$to_agent failed (exit: $exit_code)"
+      log_event "ERROR" "$to_agent failed (exit: $exit_code)" "$trace_id"
 
       # Send error notification (if Discord configured)
       if type send_agent_error_notification &>/dev/null; then
         local duration_min=$((duration / 60))
-        send_agent_error_notification "$to_agent" "$exit_code" "$duration_min" "$ticket"
+        send_agent_error_notification "$to_agent" "$exit_code" "$duration_min" "$ticket" "$trace_id"
       fi
     fi
     return 1
@@ -426,11 +429,6 @@ invoke_agent_parallel() {
   local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local ticket=$(jq -r '.context.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
 
-  # Extract additional context for notifications (issue #312)
-  local message=$(jq -r '.message // ""' "$trigger_file" 2>/dev/null || echo "")
-  local pr=$(jq -r '.context.pr // ""' "$trigger_file" 2>/dev/null || echo "")
-  local description=$(jq -r '.context.description // ""' "$trigger_file" 2>/dev/null || echo "")
-
   # Task 3: Read trigger content early (for future use in real invocation)
   local trigger_content=$(cat "$trigger_file")
 
@@ -457,7 +455,7 @@ invoke_agent_parallel() {
 
   # Send agent start notification (if Discord configured)
   if type send_agent_start_notification &>/dev/null; then
-    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" "$message" "$pr" "$description" &
+    send_agent_start_notification "$to_agent" "$action" "$from_agent" "$ticket" &
   fi
 
   (
