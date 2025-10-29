@@ -12,6 +12,10 @@ elif [ -f ".claude/scripts/worktree-helpers.sh" ]; then
   source .claude/scripts/worktree-helpers.sh
   MAIN_REPO=$(get_main_repo_path)
   source "$MAIN_REPO/.claude/lib/project-env.sh"
+elif [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
+  # CI environment - set minimal required vars
+  STARFORGE_CLAUDE_DIR=".claude"
+  echo "⚙️  CI mode: Using minimal environment"
 else
   echo "ERROR: project-env.sh not found. Run 'starforge install' first."
   exit 1
