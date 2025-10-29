@@ -1514,6 +1514,108 @@ case "$COMMAND" in
         run_doctor_checks
         ;;
 
+    events)
+        # Query structured event logs
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        # Parse options
+        TICKET=""
+        AGENT=""
+        SINCE=""
+        ACTION=""
+
+        while [ $# -gt 0 ]; do
+            case $1 in
+                --ticket)
+                    TICKET="$2"
+                    shift 2
+                    ;;
+                --agent)
+                    AGENT="$2"
+                    shift 2
+                    ;;
+                --since)
+                    SINCE="$2"
+                    shift 2
+                    ;;
+                --action)
+                    ACTION="$2"
+                    shift 2
+                    ;;
+                --help)
+                    echo "Usage: starforge events [OPTIONS]"
+                    echo ""
+                    echo "Query structured event logs (JSONL format)"
+                    echo ""
+                    echo "OPTIONS:"
+                    echo "  --ticket NUM      Filter by ticket number"
+                    echo "  --agent NAME      Filter by agent name"
+                    echo "  --since TIME      Filter by timestamp (ISO 8601)"
+                    echo "  --action NAME     Filter by action type"
+                    echo ""
+                    echo "EXAMPLES:"
+                    echo "  starforge events --ticket 42"
+                    echo "  starforge events --agent orchestrator"
+                    echo "  starforge events --since \"2025-10-29T10:00:00\""
+                    echo "  starforge events --action ticket_assigned"
+                    exit 0
+                    ;;
+                *)
+                    echo "Unknown option: $1"
+                    echo "Run 'starforge events --help' for usage"
+                    exit 1
+                    ;;
+            esac
+        done
+
+        # Build jq filter
+        JQ_FILTER="select(true"
+
+        if [ -n "$TICKET" ]; then
+            JQ_FILTER+=" and (.context.ticket == \"$TICKET\" or .context.ticket == $TICKET)"
+        fi
+
+        if [ -n "$AGENT" ]; then
+            JQ_FILTER+=" and .agent == \"$AGENT\""
+        fi
+
+        if [ -n "$SINCE" ]; then
+            JQ_FILTER+=" and .timestamp >= \"$SINCE\""
+        fi
+
+        if [ -n "$ACTION" ]; then
+            JQ_FILTER+=" and .action == \"$ACTION\""
+        fi
+
+        JQ_FILTER+=")"
+
+        # Query events
+        EVENT_DIR="$CLAUDE_DIR/events"
+
+        if [ ! -d "$EVENT_DIR" ]; then
+            echo "No events found (event logging not initialized)"
+            exit 1
+        fi
+
+        EVENT_FILES=("$EVENT_DIR"/*.jsonl)
+
+        if [ ! -f "${EVENT_FILES[0]}" ]; then
+            echo "No event log files found"
+            exit 1
+        fi
+
+        # Display matching events
+        cat "${EVENT_FILES[@]}" 2>/dev/null | jq -c "$JQ_FILTER" 2>/dev/null | while read -r event; do
+            echo "$event" | jq '.'
+        done
+
+        exit 0
+        ;;
+
     setup)
         # Setup integrations and configurations
         SUBCOMMAND="${1:-help}"

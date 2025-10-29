@@ -55,6 +55,10 @@ echo "🏷️  Step 2/8: Updating GitHub labels..."
 gh issue edit $TICKET --add-label "in-progress" --remove-label "ready"
 echo "✅ Labels updated: ready → in-progress"
 
+# Log event
+source "$SCRIPT_DIR/../lib/event-log.sh" 2>/dev/null || true
+log_event "orchestrator" "ticket_assigned" ticket=$TICKET agent=$AGENT status=in-progress
+
 # Step 3: Add GitHub comment
 echo "💬 Step 3/8: Adding assignment comment..."
 gh issue comment $TICKET --body "Assigned to $AGENT. Starting implementation."

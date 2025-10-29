@@ -353,6 +353,10 @@ invoke_agent() {
       send_agent_complete_notification "$to_agent" "$duration_min" "$duration_sec" "$action" "$ticket" "$trace_id"
     fi
 
+    # Log event
+    source "$(dirname "${BASH_SOURCE[0]}")/../lib/event-log.sh" 2>/dev/null || true
+    log_event "daemon" "trigger_processed" trigger=$(basename "$trigger_file") agent=$to_agent action=$action trace_id=$trace_id
+
     return 0
   else
     local exit_code=$?
