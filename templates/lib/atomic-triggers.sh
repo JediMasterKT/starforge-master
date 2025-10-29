@@ -30,7 +30,16 @@ create_trigger_atomic() {
     return 1
   fi
 
-  # Use STARFORGE_CLAUDE_DIR if available, fallback to .claude
+  # STARFORGE_CLAUDE_DIR override support
+  # --------------------------------------
+  # Environment variable: STARFORGE_CLAUDE_DIR (optional)
+  # Fallback: .claude (standard production path)
+  #
+  # Why we need the fallback:
+  # 1. Enables testing with alternate .claude locations
+  # 2. Supports git worktrees (each has its own STARFORGE_CLAUDE_DIR)
+  # 3. Future: Multi-project scenarios (one daemon, multiple projects)
+  # 4. Standard case: Variable unset, fallback to .claude (99% of usage)
   local claude_dir="${STARFORGE_CLAUDE_DIR:-.claude}"
   local staging_dir="$claude_dir/triggers/staging"
   local triggers_dir="$claude_dir/triggers"

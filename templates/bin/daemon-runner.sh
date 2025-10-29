@@ -4,7 +4,20 @@
 
 set -e
 
-# Get project root
+# Environment Setup
+# -----------------
+# PROJECT_ROOT = Current working directory where daemon is invoked
+#                Daemon is always started from project root (not from .claude/)
+#                This is where .env, src/, and templates/ are located
+#
+# CLAUDE_DIR   = Deployed StarForge instance ($PROJECT_ROOT/.claude)
+#                Contains: triggers/, logs/, config/, agents/
+#                Always relative to PROJECT_ROOT, never an absolute path
+#
+# This pattern supports:
+# - Main repo development (PROJECT_ROOT = starforge-master/)
+# - User projects (PROJECT_ROOT = any project with .claude/ installed)
+# - Git worktrees (each worktree has its own .claude/)
 PROJECT_ROOT="$(pwd)"
 CLAUDE_DIR="$PROJECT_ROOT/.claude"
 TRIGGER_DIR="$CLAUDE_DIR/triggers"
