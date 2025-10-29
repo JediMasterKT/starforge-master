@@ -8,6 +8,10 @@
 
 set -e  # Exit on any error
 
+# Load lock helpers for agent coordination
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/lock-helpers.sh"
+
 # Validate arguments
 if [ "$#" -ne 2 ]; then
     echo "Usage: orchestrator-assign.sh TICKET AGENT"
@@ -85,10 +89,34 @@ fi
 git checkout -b "$BRANCH" origin/main
 echo "✅ Created branch: $BRANCH (from origin/main)"
 
-# Step 7: Create coordination status file
+# Step 7: Create coordination status file (WITH LOCK)
 echo "📝 Step 7/8: Creating status file..."
 cd "$STARFORGE_MAIN_REPO"
+
+# Acquire lock on agent to prevent concurrent assignments
+if ! lock_agent "$AGENT" 30; then
+  echo "❌ ERROR: Could not acquire lock on $AGENT (another orchestrator may be assigning)"
+  echo "   This agent is likely already being assigned. Choose a different agent."
+  exit 1
+fi
+
+# Ensure lock is released on ANY exit (normal or error)
+trap 'unlock_agent "$AGENT"' EXIT ERR
+
+# Check if agent is already assigned (double-check after acquiring lock)
 STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
+if [ -f "$STATUS_FILE" ]; then
+  CURRENT_STATUS=$(jq -r '.status' "$STATUS_FILE" 2>/dev/null || echo "unknown")
+  if [ "$CURRENT_STATUS" = "working" ]; then
+    CURRENT_TICKET=$(jq -r '.ticket' "$STATUS_FILE" 2>/dev/null || echo "unknown")
+    unlock_agent "$AGENT"
+    echo "❌ ERROR: $AGENT is already working on ticket #$CURRENT_TICKET"
+    echo "   Cannot assign ticket #$TICKET to busy agent."
+    exit 1
+  fi
+fi
+
+# Write status file (protected by lock)
 jq -n \
   --arg agent "$AGENT" \
   --arg ticket "$TICKET" \
@@ -105,6 +133,9 @@ jq -n \
     based_on: "origin/main"
   }' > "$STATUS_FILE"
 echo "✅ Status file created: $STATUS_FILE"
+
+# Release lock (agent is now marked as working)
+unlock_agent "$AGENT"
 
 # Step 8: Create trigger for junior-dev
 echo "🔔 Step 8/8: Creating trigger..."
