@@ -12,6 +12,10 @@ elif [ -f ".claude/scripts/worktree-helpers.sh" ]; then
   source .claude/scripts/worktree-helpers.sh
   MAIN_REPO=$(get_main_repo_path)
   source "$MAIN_REPO/.claude/lib/project-env.sh"
+elif [ -n "$GITHUB_ACTIONS" ] || [ -n "$CI" ]; then
+  # CI environment - set minimal required vars
+  STARFORGE_CLAUDE_DIR=".claude"
+  echo "⚙️  CI mode: Using minimal environment"
 else
   echo "ERROR: project-env.sh not found. Run 'starforge install' first."
   exit 1
@@ -357,4 +361,151 @@ archive_trigger() {
     echo "❌ Failed to archive trigger"
     return 1
   fi
+}
+
+# ============================================================================
+# GITHUB WEBHOOK TRIGGERS (Issue #334)
+# ============================================================================
+
+# QA declined PR - trigger agent to rework
+create_rework_trigger() {
+  local pr_number=$1
+  local pr_branch=$2
+  local pr_author=$3
+
+  # Extract agent from branch name (e.g., feat/issue-332-agent-name → agent-name)
+  # Fallback to PR author if pattern doesn't match
+  local agent=$(echo "$pr_branch" | grep -oE '(junior-dev-[a-z]|qa-engineer|orchestrator|tpm|senior-engineer)' | head -1)
+  if [ -z "$agent" ]; then
+    agent="$pr_author"
+  fi
+
+  # Get QA feedback from PR comments
+  local feedback=$(gh pr view "$pr_number" --json comments --jq '.comments[] | select(.author.login == "qa-engineer" or (.body | contains("qa-declined"))) | .body' | tail -1)
+  if [ -z "$feedback" ]; then
+    feedback="QA declined. Review PR comments for details."
+  fi
+
+  # Extract trace_id from PR body (format: Trace ID: TRACE-xxx)
+  local trace_id=$(gh pr view "$pr_number" --json body --jq '.body' | grep -oE 'TRACE-[0-9]+-[a-f0-9]+' | head -1)
+  if [ -z "$trace_id" ]; then
+    trace_id=$(generate_trace_id)
+  fi
+
+  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local trigger_file="$TRIGGER_DIR/${agent}-rework_pr-$(date +%s).trigger"
+
+  cat > "$trigger_file" << TRIGGER
+{
+  "trace_id": "$trace_id",
+  "from_agent": "qa-engineer",
+  "to_agent": "$agent",
+  "action": "rework_pr",
+  "context": {
+    "pr": $pr_number,
+    "feedback": $(echo "$feedback" | jq -Rs .),
+    "branch": "$pr_branch"
+  },
+  "timestamp": "$timestamp",
+  "message": "PR #$pr_number declined by QA. Rework needed.",
+  "command": "Use junior-engineer. Review QA feedback and fix PR #$pr_number."
+}
+TRIGGER
+
+  echo "✅ Rework trigger created: $trigger_file"
+  echo "[$(date +'%Y-%m-%d %H:%M:%S')] qa-engineer → $agent | rework_pr | PR #$pr_number declined" >> "$LOG_FILE"
+}
+
+# Human approved PR - trigger orchestrator to merge
+create_human_approval_trigger() {
+  local pr_number=$1
+
+  # Extract ticket number from PR title or body
+  local ticket=$(gh pr view "$pr_number" --json title,body --jq '[.title, .body] | join(" ")' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+
+  # Extract trace_id from PR body
+  local trace_id=$(gh pr view "$pr_number" --json body --jq '.body' | grep -oE 'TRACE-[0-9]+-[a-f0-9]+' | head -1)
+  if [ -z "$trace_id" ]; then
+    trace_id=$(generate_trace_id)
+  fi
+
+  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local trigger_file="$TRIGGER_DIR/orchestrator-merge_pr-$(date +%s).trigger"
+
+  cat > "$trigger_file" << TRIGGER
+{
+  "trace_id": "$trace_id",
+  "from_agent": "human",
+  "to_agent": "orchestrator",
+  "action": "merge_pr",
+  "context": {
+    "pr": $pr_number,
+    "ticket": $ticket
+  },
+  "timestamp": "$timestamp",
+  "message": "PR #$pr_number approved by human. Ready to merge.",
+  "command": "Use orchestrator. Merge PR #$pr_number with gh pr merge --squash."
+}
+TRIGGER
+
+  echo "✅ Human approval trigger created: $trigger_file"
+  echo "[$(date +'%Y-%m-%d %H:%M:%S')] human → orchestrator | merge_pr | PR #$pr_number approved" >> "$LOG_FILE"
+}
+
+# PR merged - log completion metrics
+log_completion() {
+  local pr_number=$1
+  local pr_author=$2
+
+  # Extract metadata
+  local pr_data=$(gh pr view "$pr_number" --json number,author,createdAt,mergedAt,title,body)
+  local agent=$(echo "$pr_data" | jq -r '.author.login')
+  local created_at=$(echo "$pr_data" | jq -r '.createdAt')
+  local merged_at=$(echo "$pr_data" | jq -r '.mergedAt')
+  local ticket=$(echo "$pr_data" | jq -r '[.title, .body] | join(" ")' | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+  local trace_id=$(echo "$pr_data" | jq -r '.body' | grep -oE 'TRACE-[0-9]+-[a-f0-9]+' | head -1)
+
+  if [ -z "$trace_id" ]; then
+    trace_id="NO-TRACE"
+  fi
+
+  # Calculate duration in seconds
+  local created_ts=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$created_at" +%s 2>/dev/null || date -d "$created_at" +%s)
+  local merged_ts=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$merged_at" +%s 2>/dev/null || date -d "$merged_at" +%s)
+  local duration=$((merged_ts - created_ts))
+
+  # Log to metrics file
+  local metrics_dir="${STARFORGE_CLAUDE_DIR}/../templates/metrics"
+  mkdir -p "$metrics_dir"
+  local metrics_file="$metrics_dir/completions.log"
+
+  # Create header if file doesn't exist
+  if [ ! -f "$metrics_file" ]; then
+    echo "pr_number,agent,ticket,duration_seconds,created_at,merged_at,trace_id" > "$metrics_file"
+  fi
+
+  # Append completion
+  echo "$pr_number,$agent,$ticket,$duration,$created_at,$merged_at,$trace_id" >> "$metrics_file"
+
+  # Send Discord notification if available
+  if type send_discord_daemon_notification &>/dev/null; then
+    local duration_min=$((duration / 60))
+    local description="✅ PR #$pr_number merged successfully
+
+**Agent:** $agent
+**Ticket:** #$ticket
+**Duration:** ${duration_min} minutes
+
+**Trace ID:** \`$trace_id\`"
+
+    send_discord_daemon_notification \
+      "orchestrator" \
+      "🎉 PR Merged" \
+      "$description" \
+      "3066993" \
+      "" \
+      "$trace_id"
+  fi
+
+  echo "✅ Completion logged: PR #$pr_number (${duration}s)"
 }

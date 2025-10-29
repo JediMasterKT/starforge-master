@@ -1,0 +1,50 @@
+name: StarForge Trigger on Label
+
+on:
+  pull_request:
+    types: [labeled, closed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  create-trigger:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event.action == 'labeled' &&
+       (github.event.label.name == 'qa-declined' ||
+        github.event.label.name == 'human-approved')) ||
+      (github.event.action == 'closed' && github.event.pull_request.merged == true)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract PR metadata
+        id: pr-meta
+        run: |
+          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "pr_author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+          echo "pr_branch=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+          echo "pr_state=${{ github.event.pull_request.state }}" >> $GITHUB_OUTPUT
+          echo "pr_merged=${{ github.event.pull_request.merged }}" >> $GITHUB_OUTPUT
+          echo "label_name=${{ github.event.label.name }}" >> $GITHUB_OUTPUT
+
+      - name: Call webhook handler
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ steps.pr-meta.outputs.pr_number }}
+          PR_AUTHOR: ${{ steps.pr-meta.outputs.pr_author }}
+          PR_BRANCH: ${{ steps.pr-meta.outputs.pr_branch }}
+          PR_STATE: ${{ steps.pr-meta.outputs.pr_state }}
+          PR_MERGED: ${{ steps.pr-meta.outputs.pr_merged }}
+          LABEL_NAME: ${{ steps.pr-meta.outputs.label_name }}
+        run: |
+          if [ -f "templates/scripts/github-webhook-handler.sh" ]; then
+            bash templates/scripts/github-webhook-handler.sh
+          else
+            echo "❌ Webhook handler not found"
+            exit 1
+          fi
