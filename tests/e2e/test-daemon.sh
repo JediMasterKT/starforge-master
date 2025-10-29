@@ -99,7 +99,7 @@ test_daemon_lifecycle() {
 
   # Check daemon scripts exist
   assert_file_exists ".claude/bin/daemon.sh" "Daemon lifecycle script exists"
-  assert_file_exists ".claude/bin/daemon-runner.sh" "Daemon runner script exists"
+  assert_file_exists ".claude/bin/starforged" "Daemon runner script exists"
 
   # Test daemon start
   echo -e "${BLUE}Starting daemon...${NC}"

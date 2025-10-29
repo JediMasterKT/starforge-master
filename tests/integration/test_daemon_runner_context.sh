@@ -1,8 +1,8 @@
 #!/bin/bash
 # tests/integration/test_daemon_runner_context.sh
 #
-# Integration test that verifies daemon-runner.sh correctly extracts context variables
-# This test sources the actual daemon-runner.sh and tests the extraction logic
+# Integration test that verifies starforged correctly extracts context variables
+# This test sources the actual starforged and tests the extraction logic
 #
 
 set -e
@@ -14,14 +14,14 @@ trap "rm -rf $TEST_DIR" EXIT
 echo "Integration Test: Daemon Runner Context Extraction"
 echo "=================================================="
 
-# Test that daemon-runner.sh has the new extraction logic
+# Test that starforged has the new extraction logic
 test_daemon_runner_has_context_extraction() {
-  echo -n "Test 1: Verify daemon-runner.sh contains context extraction code... "
+  echo -n "Test 1: Verify starforged contains context extraction code... "
 
-  local daemon_runner="templates/bin/daemon-runner.sh"
+  local daemon_runner="templates/bin/starforged"
 
   if [ ! -f "$daemon_runner" ]; then
-    echo "❌ FAIL: daemon-runner.sh not found at $daemon_runner"
+    echo "❌ FAIL: starforged not found at $daemon_runner"
     return 1
   fi
 
@@ -51,7 +51,7 @@ test_daemon_runner_has_context_extraction() {
 test_extraction_order() {
   echo -n "Test 2: Verify extraction order (after message/ticket/command)... "
 
-  local daemon_runner="templates/bin/daemon-runner.sh"
+  local daemon_runner="templates/bin/starforged"
 
   # Get line number of message extraction
   local message_line=$(grep -n 'local message=$(jq -r' "$daemon_runner" | head -1 | cut -d: -f1)
@@ -78,7 +78,7 @@ test_extraction_order() {
 test_all_fields_extracted() {
   echo -n "Test 3: Verify all required fields are extracted... "
 
-  local daemon_runner="templates/bin/daemon-runner.sh"
+  local daemon_runner="templates/bin/starforged"
 
   local missing_fields=""
 
@@ -108,7 +108,7 @@ test_all_fields_extracted() {
 test_error_handling() {
   echo -n "Test 4: Verify error handling fallbacks... "
 
-  local daemon_runner="templates/bin/daemon-runner.sh"
+  local daemon_runner="templates/bin/starforged"
 
   # Check context_json has fallback to {}
   if ! grep 'local context_json=' "$daemon_runner" | grep -q '|| echo "{}"'; then
@@ -136,7 +136,7 @@ test_error_handling() {
 test_has_issue_reference() {
   echo -n "Test 5: Verify comment references issue #311... "
 
-  local daemon_runner="templates/bin/daemon-runner.sh"
+  local daemon_runner="templates/bin/starforged"
 
   if grep -B 2 'local context_json=' "$daemon_runner" | grep -q '#311'; then
     echo "✅ PASS"

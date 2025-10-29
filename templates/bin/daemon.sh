@@ -10,7 +10,7 @@ CLAUDE_DIR="$STARFORGE_DIR/.claude"
 PID_FILE="$CLAUDE_DIR/daemon.pid"
 LOCK_DIR="$CLAUDE_DIR/daemon.lock"
 LOG_FILE="$CLAUDE_DIR/logs/daemon.log"
-DAEMON_RUNNER="$STARFORGE_DIR/bin/daemon-runner.sh"
+DAEMON_RUNNER="$CLAUDE_DIR/bin/starforged"
 
 # Flags
 SILENT_MODE=false
@@ -150,9 +150,9 @@ start_daemon() {
     return 1
   fi
 
-  # Check if daemon-runner exists
+  # Check if starforged daemon exists
   if [ ! -f "$DAEMON_RUNNER" ]; then
-    output "${RED}Error: daemon-runner.sh not found at $DAEMON_RUNNER${NC}"
+    output "${RED}Error: starforged daemon not found at $DAEMON_RUNNER${NC}"
     remove_lock
     return 1
   fi
@@ -237,6 +237,36 @@ status_daemon() {
     echo -e "  PID: $pid"
     echo -e "  Uptime: $uptime"
     echo -e "  Log: $LOG_FILE"
+
+    # Load queue status library
+    if [ -f "$STARFORGE_DIR/templates/lib/queue-status.sh" ]; then
+      source "$STARFORGE_DIR/templates/lib/queue-status.sh"
+
+      # Show queue status
+      echo -e "\n${BLUE}Queue Status:${NC}"
+      local queue_json=$(get_queue_status)
+      local pending=$(echo "$queue_json" | jq -r '.pending')
+      local processing=$(echo "$queue_json" | jq -r '.processing')
+      local completed=$(echo "$queue_json" | jq -r '.completed_1h')
+      local failed=$(echo "$queue_json" | jq -r '.failed_1h')
+      local dlq=$(echo "$queue_json" | jq -r '.dlq')
+
+      echo -e "  Pending: $pending"
+      echo -e "  Processing: $processing"
+      echo -e "  Completed (1h): $completed"
+      echo -e "  Failed (1h): $failed"
+      if [ "$dlq" -gt 0 ]; then
+        echo -e "  ${YELLOW}Dead Letter Queue: $dlq${NC}"
+      fi
+
+      # Show busy agents
+      local agents_json=$(get_agent_status)
+      local busy_count=$(echo "$agents_json" | jq -r 'length')
+      if [ "$busy_count" -gt 0 ]; then
+        echo -e "\n${BLUE}Busy Agents:${NC}"
+        echo "$agents_json" | jq -r '.[] | "  \(.agent): \(.trigger)"'
+      fi
+    fi
 
     # Show recent activity
     if [ -f "$LOG_FILE" ]; then

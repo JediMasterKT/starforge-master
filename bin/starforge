@@ -783,12 +783,18 @@ case "$COMMAND" in
             echo -e "${BLUE}Starting StarForge daemon...${NC}"
 
             # Start daemon silently (it will check if already running)
-            if "$STARFORGE_DIR/templates/bin/daemon.sh" --silent start; then
-                echo -e "${GREEN}✓ Daemon started successfully${NC}"
-                echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+            # Use deployed daemon.sh from .claude/bin/
+            if [ -f ".claude/bin/daemon.sh" ]; then
+                if .claude/bin/daemon.sh --silent start; then
+                    echo -e "${GREEN}✓ Daemon started successfully${NC}"
+                    echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+                else
+                    echo -e "${YELLOW}⚠️  Could not start daemon automatically${NC}"
+                    echo -e "${YELLOW}   Start manually: starforge daemon start${NC}"
+                fi
             else
-                echo -e "${YELLOW}⚠️  Could not start daemon automatically${NC}"
-                echo -e "${YELLOW}   Start manually: starforge daemon start${NC}"
+                echo -e "${YELLOW}⚠️  Daemon not found (install may be incomplete)${NC}"
+                echo -e "${YELLOW}   Try: starforge daemon start${NC}"
             fi
         fi
 
@@ -932,11 +938,12 @@ case "$COMMAND" in
         chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
         echo -e "${CHECK} Updated hooks"
 
-        # Update bin scripts (daemon, etc.)
+        # Update bin scripts (daemon, starforged, etc.)
         echo -e "${INFO}Updating bin scripts..."
         mkdir -p "$CLAUDE_DIR/bin"
         cp "$STARFORGE_DIR/templates/bin"/*.sh "$CLAUDE_DIR/bin/"
-        chmod +x "$CLAUDE_DIR/bin"/*.sh
+        cp "$STARFORGE_DIR/templates/bin/starforged" "$CLAUDE_DIR/bin/"
+        chmod +x "$CLAUDE_DIR/bin"/*
         echo -e "${CHECK} Updated bin scripts"
 
         # Update protocol files
@@ -1250,6 +1257,20 @@ case "$COMMAND" in
             }
         fi
 
+        # Source queue-status.sh for trigger queue visibility
+        QUEUE_LIB="${STARFORGE_LIB_DIR:-templates/lib}/queue-status.sh"
+        if [ ! -f "$QUEUE_LIB" ]; then
+            # Fallback: try .claude/lib if templates not found
+            QUEUE_LIB=".claude/lib/queue-status.sh"
+        fi
+
+        if [ -f "$QUEUE_LIB" ]; then
+            source "$QUEUE_LIB" || {
+                echo -e "${RED}Warning: Failed to load queue-status.sh${NC}"
+                echo -e "${RED}Queue status features may not be available${NC}"
+            }
+        fi
+
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${BLUE}🤖 StarForge Agent Status${NC}"
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -1372,6 +1393,74 @@ case "$COMMAND" in
                 failed=$(get_failed_trigger_count)
                 if [ "$failed" -gt 0 ]; then
                     echo "  ⚠️  $failed failed triggers in .claude/triggers/failed/"
+                fi
+            fi
+            echo ""
+        fi
+
+        # Queue status (NEW SECTION - Issue #333)
+        if declare -f get_queue_status >/dev/null 2>&1 && \
+           declare -f get_agent_status >/dev/null 2>&1 && \
+           declare -f is_daemon_running >/dev/null 2>&1; then
+            echo -e "${GREEN}QUEUE STATUS:${NC}"
+
+            # Get queue status JSON
+            queue_json=$(get_queue_status 2>/dev/null || echo '{"pending":0,"processing":0,"completed_1h":0,"failed_1h":0,"dlq":0}')
+
+            # Parse queue counts
+            pending=$(echo "$queue_json" | jq -r '.pending // 0' 2>/dev/null || echo "0")
+            processing=$(echo "$queue_json" | jq -r '.processing // 0' 2>/dev/null || echo "0")
+            completed_1h=$(echo "$queue_json" | jq -r '.completed_1h // 0' 2>/dev/null || echo "0")
+            failed_1h=$(echo "$queue_json" | jq -r '.failed_1h // 0' 2>/dev/null || echo "0")
+            dlq=$(echo "$queue_json" | jq -r '.dlq // 0' 2>/dev/null || echo "0")
+
+            # Display queue status with color coding
+            if [ "$pending" -gt 0 ]; then
+                echo "  Pending: ${YELLOW}$pending${NC}"
+            else
+                echo "  Pending: $pending"
+            fi
+
+            if [ "$processing" -gt 0 ]; then
+                echo "  Processing: ${BLUE}$processing${NC}"
+            else
+                echo "  Processing: $processing"
+            fi
+
+            echo "  Completed (1h): $completed_1h"
+
+            if [ "$failed_1h" -gt 0 ]; then
+                echo "  Failed (1h): ${RED}$failed_1h${NC}"
+            else
+                echo "  Failed (1h): $failed_1h"
+            fi
+
+            if [ "$dlq" -gt 0 ]; then
+                echo "  Dead Letter Queue: ${RED}⚠️  $dlq${NC}"
+            else
+                echo "  Dead Letter Queue: $dlq"
+            fi
+
+            # Show busy agents if any
+            if [ "$processing" -gt 0 ]; then
+                echo ""
+                echo -e "${GREEN}BUSY AGENTS:${NC}"
+                agent_json=$(get_agent_status 2>/dev/null || echo '[]')
+
+                if [ "$(echo "$agent_json" | jq 'length' 2>/dev/null)" -gt 0 ]; then
+                    echo "$agent_json" | jq -r '.[] | "  \(.agent): \(.trigger) (running for \(.duration_seconds)s)"' 2>/dev/null | while IFS= read -r line; do
+                        # Extract duration and format it
+                        if [[ "$line" =~ \(running\ for\ ([0-9]+)s\) ]]; then
+                            duration="${BASH_REMATCH[1]}"
+                            if declare -f format_duration >/dev/null 2>&1; then
+                                formatted=$(format_duration "$duration")
+                                line=$(echo "$line" | sed "s/${duration}s)/$formatted)/")
+                            fi
+                        fi
+                        echo "$line"
+                    done
+                else
+                    echo "  No agents currently processing triggers"
                 fi
             fi
             echo ""
