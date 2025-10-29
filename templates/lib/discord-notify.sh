@@ -140,12 +140,8 @@ send_discord_daemon_notification() {
   # Generate ISO 8601 timestamp
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
-  # Inject trace_id as first field if provided
-  local final_fields="$fields"
-  if [ -n "$trace_id" ]; then
-    # Prepend trace_id field to existing fields array
-    final_fields=$(echo "$fields" | jq --arg trace "$trace_id" '. = [{"name":"Trace ID","value":$trace,"inline":false}] + .')
-  fi
+  # Always inject trace_id as first field
+  local final_fields=$(echo "$fields" | jq --arg trace "$trace_id" '. = [{"name":"Trace ID","value":$trace,"inline":false}] + .')
 
   # Build JSON payload with Discord embed format
   local payload=$(cat <<EOF

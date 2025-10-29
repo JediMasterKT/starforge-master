@@ -45,14 +45,9 @@ log_event() {
   local trace_id=${3:-""}
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-  # Include trace_id in log if provided (for end-to-end tracing)
-  if [ -n "$trace_id" ]; then
-    echo "[$timestamp] [$trace_id] $level: $message" >> "$LOG_FILE"
-    echo "[$timestamp] [$trace_id] $level: $message" >&2
-  else
-    echo "[$timestamp] $level: $message" >> "$LOG_FILE"
-    echo "[$timestamp] $level: $message" >&2
-  fi
+  # Always include trace_id in log (empty if not provided)
+  echo "[$timestamp] [$trace_id] $level: $message" >> "$LOG_FILE"
+  echo "[$timestamp] [$trace_id] $level: $message" >&2
 }
 
 # Load environment variables (Discord webhooks, etc.)
@@ -237,7 +232,7 @@ invoke_agent() {
   local to_agent=$(jq -r '.to_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local from_agent=$(jq -r '.from_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
-  local trace_id=$(jq -r '.trace_id // "NO-TRACE"' "$trigger_file" 2>/dev/null || echo "NO-TRACE")
+  local trace_id=$(jq -r '.trace_id' "$trigger_file" 2>/dev/null || echo "")
 
   if [ "$to_agent" = "unknown" ] || [ "$to_agent" = "null" ]; then
     log_event "ERROR" "Missing 'to_agent' field in $(basename "$trigger_file")" "$trace_id"
