@@ -17,6 +17,9 @@ else
   exit 1
 fi
 
+# Source atomic trigger operations library
+source "$STARFORGE_CLAUDE_DIR/../templates/lib/atomic-triggers.sh" 2>/dev/null || source "$(dirname "$0")/../lib/atomic-triggers.sh"
+
 # Use environment variables from project-env.sh
 TRIGGER_DIR="$STARFORGE_CLAUDE_DIR/triggers"
 LOG_FILE="$STARFORGE_CLAUDE_DIR/trigger-history.log"
@@ -24,6 +27,7 @@ LOG_FILE="$STARFORGE_CLAUDE_DIR/trigger-history.log"
 # Ensure trigger directory exists
 mkdir -p "$TRIGGER_DIR"
 mkdir -p "$TRIGGER_DIR/processed"
+mkdir -p "$TRIGGER_DIR/staging"
 
 # Generate unique trace ID for end-to-end workflow tracking
 # Format: TRACE-{timestamp}-{random_hex}
@@ -34,7 +38,8 @@ generate_trace_id() {
   echo "TRACE-${timestamp}-${random_hex}"
 }
 
-# Generic trigger creation
+# Generic trigger creation (with atomic file operations)
+# Uses staging directory and atomic rename to prevent race conditions
 create_trigger() {
   local from_agent=$1
   local to_agent=$2
@@ -46,9 +51,10 @@ create_trigger() {
 
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   local trace_id=$(generate_trace_id)
-  local trigger_file="$TRIGGER_DIR/${to_agent}-${action}-$(date +%s).trigger"
+  local trigger_filename="${to_agent}-${action}-$(date +%s)"
 
-  cat > "$trigger_file" << TRIGGER
+  # Build trigger JSON
+  local trigger_json=$(cat << TRIGGER_JSON
 {
   "trace_id": "$trace_id",
   "from_agent": "$from_agent",
@@ -59,10 +65,21 @@ create_trigger() {
   "message": "$message",
   "command": "$command"
 }
-TRIGGER
-  
+TRIGGER_JSON
+)
+
+  # Create trigger atomically (staging → atomic rename)
+  create_trigger_atomic "$trigger_json" "$trigger_filename"
+
+  if [ $? -ne 0 ]; then
+    echo "❌ Failed to create trigger atomically" >&2
+    return 1
+  fi
+
+  local trigger_file="$TRIGGER_FILE_PATH"
+
   echo "✅ Trigger created: $trigger_file"
-  
+
   # 🔔 SEND macOS NOTIFICATION
   if command -v terminal-notifier &> /dev/null; then
     terminal-notifier -title "🤖 $from_agent → $to_agent" -subtitle "Action: $action" -message "$message" -sender com.googlecode.iterm2 2>/dev/null || true
@@ -71,10 +88,10 @@ TRIGGER
   elif command -v osascript &> /dev/null; then
     osascript -e "display notification \"$message\" with title \"🤖 $from_agent → $to_agent\" subtitle \"Action: $action\" sound name \"Ping\"" 2>/dev/null || true
   fi
-  
+
   # 📝 LOG TO HISTORY
   echo "[$(date +'%Y-%m-%d %H:%M:%S')] $from_agent → $to_agent | $action | $message" >> "$LOG_FILE"
-  
+
   # Terminal visual alert
   echo -e "\033[1;33m⚡ HANDOFF TRIGGERED\033[0m"
   echo -e "\033[1;36m🤖 $from_agent → $to_agent\033[0m"
