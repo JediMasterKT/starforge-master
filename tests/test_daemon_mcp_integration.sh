@@ -47,9 +47,9 @@ setup_test_environment() {
   git add .
   git commit -m "Initial commit"
 
-  # Copy daemon-runner.sh from templates
+  # Copy starforged from templates
   mkdir -p .claude/bin
-  cp "$STARFORGE_ROOT/templates/bin/daemon-runner.sh" .claude/bin/
+  cp "$STARFORGE_ROOT/templates/bin/starforged" .claude/bin/
   cp "$STARFORGE_ROOT/templates/bin/mcp-server.sh" .claude/bin/
 
   # Create required directories
@@ -90,13 +90,13 @@ test_daemon_invokes_agent_via_mcp() {
   echo -e "${BLUE}Test 1: Daemon invokes agent via MCP server${NC}"
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-  # Verify daemon-runner.sh contains MCP invocation
-  assert_file_contains ".claude/bin/daemon-runner.sh" "mcp-server.sh" \
+  # Verify starforged contains MCP invocation
+  assert_file_contains ".claude/bin/starforged" "mcp-server.sh" \
     "Daemon script references MCP server"
 
   # Check for --mcp stdio using grep -F (fixed string)
   TESTS_RUN=$((TESTS_RUN + 1))
-  if grep -F -- '--mcp stdio' .claude/bin/daemon-runner.sh > /dev/null; then
+  if grep -F -- '--mcp stdio' .claude/bin/starforged > /dev/null; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
     echo -e "  ${GREEN}✓${NC} Daemon uses --mcp stdio flag"
   else
@@ -107,7 +107,7 @@ test_daemon_invokes_agent_via_mcp() {
 
   # Verify old claude --print is NOT used alone
   # (It should be: mcp-server.sh | claude --mcp stdio)
-  local old_pattern_count=$(grep -c 'claude --print --permission-mode bypassPermissions "Use the' .claude/bin/daemon-runner.sh 2>/dev/null || echo "0")
+  local old_pattern_count=$(grep -c 'claude --print --permission-mode bypassPermissions "Use the' .claude/bin/starforged 2>/dev/null || echo "0")
   old_pattern_count=$(echo "$old_pattern_count" | head -1 | tr -d ' \n')
 
   assert_equals "0" "$old_pattern_count" \
@@ -157,7 +157,7 @@ EOF
 
   # Modify daemon-runner to use mock scripts
   # Create a test version that uses mocks
-  cat .claude/bin/daemon-runner.sh | \
+  cat .claude/bin/starforged | \
     sed 's|"$CLAUDE_DIR/bin/mcp-server.sh"|.claude/bin/mcp-server-mock.sh|g' | \
     sed 's|claude --mcp stdio|.claude/bin/claude-mock.sh --mcp stdio|g' \
     > .claude/bin/daemon-runner-test.sh
@@ -199,12 +199,12 @@ test_mcp_server_spawns_per_invocation() {
   echo -e "${BLUE}Test 3: MCP server spawns per agent invocation${NC}"
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-  # Verify daemon-runner.sh spawns MCP server (not a persistent service)
+  # Verify starforged spawns MCP server (not a persistent service)
   # Pattern should be: "$CLAUDE_DIR/bin/mcp-server.sh" | claude --mcp stdio
 
   # Check for pipe pattern (may be multiline)
   TESTS_RUN=$((TESTS_RUN + 1))
-  if grep -A 1 'mcp-server.sh' .claude/bin/daemon-runner.sh | grep -q 'claude'; then
+  if grep -A 1 'mcp-server.sh' .claude/bin/starforged | grep -q 'claude'; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
     echo -e "  ${GREEN}✓${NC} Daemon pipes MCP server to claude"
   else
@@ -213,7 +213,7 @@ test_mcp_server_spawns_per_invocation() {
   fi
 
   # Verify MCP server is NOT started as a background daemon
-  local bg_daemon_pattern_count=$(grep -c 'mcp-server.sh.*&' .claude/bin/daemon-runner.sh 2>/dev/null || echo "0")
+  local bg_daemon_pattern_count=$(grep -c 'mcp-server.sh.*&' .claude/bin/starforged 2>/dev/null || echo "0")
   bg_daemon_pattern_count=$(echo "$bg_daemon_pattern_count" | head -1 | tr -d ' \n')
 
   assert_equals "0" "$bg_daemon_pattern_count" \
@@ -232,14 +232,14 @@ test_daemon_logs_to_file() {
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
   # Verify LOG_FILE is defined and logs redirected
-  assert_file_contains ".claude/bin/daemon-runner.sh" 'LOG_FILE=' \
+  assert_file_contains ".claude/bin/starforged" 'LOG_FILE=' \
     "Daemon defines LOG_FILE variable"
 
-  assert_file_contains ".claude/bin/daemon-runner.sh" '>> "$LOG_FILE"' \
+  assert_file_contains ".claude/bin/starforged" '>> "$LOG_FILE"' \
     "Daemon redirects output to LOG_FILE"
 
   # Verify claude invocation logs to LOG_FILE
-  local log_redirect_count=$(grep -c '>> "$LOG_FILE" 2>&1' .claude/bin/daemon-runner.sh || echo "0")
+  local log_redirect_count=$(grep -c '>> "$LOG_FILE" 2>&1' .claude/bin/starforged || echo "0")
 
   assert_not_equals "0" "$log_redirect_count" \
     "Claude invocation logs redirected to LOG_FILE"

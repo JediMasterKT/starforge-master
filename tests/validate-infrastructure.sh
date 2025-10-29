@@ -42,8 +42,8 @@ done
 echo ""
 
 echo "⚙️  Daemon Scripts"
-check "daemon-runner.sh exists" test -f templates/bin/daemon-runner.sh
-check "daemon-runner.sh executable" test -x templates/bin/daemon-runner.sh
+check "starforged exists" test -f templates/bin/starforged
+check "starforged executable" test -x templates/bin/starforged
 echo ""
 
 echo "📚 Library Files"
@@ -83,9 +83,9 @@ trap "rm -rf $TEST_DIR" EXIT
 mkdir -p "$TEST_DIR/.claude"/{triggers,logs,daemon}
 mkdir -p "$TEST_DIR/templates/lib"
 
-cp templates/bin/daemon-runner.sh "$TEST_DIR/.claude/bin/" 2>/dev/null || {
+cp templates/bin/starforged "$TEST_DIR/.claude/bin/" 2>/dev/null || {
   mkdir -p "$TEST_DIR/.claude/bin"
-  cp templates/bin/daemon-runner.sh "$TEST_DIR/.claude/bin/"
+  cp templates/bin/starforged "$TEST_DIR/.claude/bin/"
 }
 cp -r templates/lib/*.sh "$TEST_DIR/.claude/lib/"
 cp templates/lib/agent-slots.sh "$TEST_DIR/templates/lib/"
@@ -96,7 +96,7 @@ export MAX_CONCURRENT_AGENTS=4
 EOF
 
 cd "$TEST_DIR"
-if timeout 5 bash -c "source .env && .claude/bin/daemon-runner.sh 2>&1" | grep -q "Parallel execution enabled"; then
+if timeout 5 bash -c "source .env && .claude/bin/starforged 2>&1" | grep -q "Parallel execution enabled"; then
   echo "✅ Daemon configuration parsing works"
   ((PASSED++))
 else

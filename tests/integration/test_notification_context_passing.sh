@@ -2,19 +2,19 @@
 #
 # Integration Test: send_agent_start_notification() receives context
 #
-# Tests that daemon-runner.sh passes extracted context variables
+# Tests that starforged passes extracted context variables
 # (message, pr, description) to send_agent_start_notification()
 #
 # Related: Issue #312
 
 set -e
 
-DAEMON_RUNNER="templates/bin/daemon-runner.sh"
+DAEMON_RUNNER="templates/bin/starforged"
 
 echo "Integration Test: Notification Context Passing"
 echo "=============================================="
 
-# Test 1: Verify daemon-runner.sh line ~273 has new signature (sequential mode)
+# Test 1: Verify starforged line ~273 has new signature (sequential mode)
 echo -n "Test 1: Sequential mode (line ~273) passes context parameters... "
 
 # Find the line in invoke_agent function (sequential mode)
@@ -29,7 +29,7 @@ else
   exit 1
 fi
 
-# Test 2: Verify daemon-runner.sh line ~450 has new signature (parallel mode)
+# Test 2: Verify starforged line ~450 has new signature (parallel mode)
 echo -n "Test 2: Parallel mode (line ~450) passes context parameters... "
 
 # Find the line in invoke_agent_parallel function
@@ -87,7 +87,7 @@ if grep -q 'local message=' "$DAEMON_RUNNER" && \
   echo "✅ PASS"
 else
   echo "❌ FAIL"
-  echo "Variables message, pr, or description not found in daemon-runner.sh"
+  echo "Variables message, pr, or description not found in starforged"
   exit 1
 fi
 
@@ -100,7 +100,7 @@ if grep -q 'local context_json=' "$DAEMON_RUNNER" && \
   echo "✅ PASS"
 else
   echo "❌ FAIL"
-  echo "Context extraction from #311 not found in daemon-runner.sh"
+  echo "Context extraction from #311 not found in starforged"
   exit 1
 fi
 

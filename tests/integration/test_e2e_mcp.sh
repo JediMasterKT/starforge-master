@@ -393,9 +393,9 @@ echo ""
 TOTAL_TESTS=$((TOTAL_TESTS + 1))
 echo -n "Test $TOTAL_TESTS: Daemon MCP integration (E1)... "
 
-DAEMON_RUNNER="$PROJECT_ROOT/templates/bin/daemon-runner.sh"
+DAEMON_RUNNER="$PROJECT_ROOT/templates/bin/starforged"
 if [ ! -f "$DAEMON_RUNNER" ]; then
-    echo -e "${YELLOW}⊘ SKIP - daemon-runner.sh not found${NC}"
+    echo -e "${YELLOW}⊘ SKIP - starforged not found${NC}"
     SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
     TOTAL_TESTS=$((TOTAL_TESTS - 1))
 elif grep -q "mcp-server.sh\|--mcp stdio" "$DAEMON_RUNNER"; then

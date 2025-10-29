@@ -28,12 +28,12 @@ mkdir -p "$CLAUDE_DIR/daemon"
 mkdir -p "$CLAUDE_DIR/logs"
 
 # Copy daemon runner to test dir
-cp "$(dirname "$0")/../templates/bin/daemon-runner.sh" "$TEST_DIR/daemon-runner.sh"
+cp "$(dirname "$0")/../templates/bin/starforged" "$TEST_DIR/starforged"
 cp "$(dirname "$0")/../templates/lib/agent-slots.sh" "$CLAUDE_DIR/agent-slots.sh"
 
-# Modify daemon-runner.sh to source agent-slots.sh from test location
-sed -i '' 's|source "$CLAUDE_DIR/../templates/lib/agent-slots.sh"|source "$CLAUDE_DIR/agent-slots.sh"|g' "$TEST_DIR/daemon-runner.sh"
-sed -i '' 's|source "$PROJECT_ROOT/templates/lib/agent-slots.sh"|source "$CLAUDE_DIR/agent-slots.sh"|g' "$TEST_DIR/daemon-runner.sh"
+# Modify starforged to source agent-slots.sh from test location
+sed -i '' 's|source "$CLAUDE_DIR/../templates/lib/agent-slots.sh"|source "$CLAUDE_DIR/agent-slots.sh"|g' "$TEST_DIR/starforged"
+sed -i '' 's|source "$PROJECT_ROOT/templates/lib/agent-slots.sh"|source "$CLAUDE_DIR/agent-slots.sh"|g' "$TEST_DIR/starforged"
 
 # Create test triggers
 echo "Creating test triggers..."
@@ -79,7 +79,7 @@ echo "Starting daemon (parallel mode)..."
 cd "$TEST_DIR"
 
 # Run daemon for 10 seconds then kill it
-timeout 10 bash "$TEST_DIR/daemon-runner.sh" > "$CLAUDE_DIR/logs/daemon-output.log" 2>&1 || true
+timeout 10 bash "$TEST_DIR/starforged" > "$CLAUDE_DIR/logs/daemon-output.log" 2>&1 || true
 
 echo ""
 echo "=========================================="
