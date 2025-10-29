@@ -69,6 +69,13 @@ if [ -f "$PROJECT_ROOT/.claude/lib/discord-notify.sh" ]; then
   source "$PROJECT_ROOT/.claude/lib/discord-notify.sh"
 fi
 
+# Load dead letter queue helper
+if [ -f "$PROJECT_ROOT/templates/lib/dead-letter-queue.sh" ]; then
+  source "$PROJECT_ROOT/templates/lib/dead-letter-queue.sh"
+elif [ -f "$CLAUDE_DIR/../templates/lib/dead-letter-queue.sh" ]; then
+  source "$CLAUDE_DIR/../templates/lib/dead-letter-queue.sh"
+fi
+
 # Initialize agent slots file
 if [ ! -f "$AGENT_SLOTS_FILE" ]; then
   echo '{}' > "$AGENT_SLOTS_FILE"
@@ -369,7 +376,14 @@ invoke_agent_with_retry() {
   local attempt=1
   local delay=$INITIAL_RETRY_DELAY
 
+  # Track retry timestamps for DLQ metadata
+  local retry_timestamps="[]"
+
   while [ $attempt -le $max_retries ]; do
+    # Record attempt timestamp
+    local attempt_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    retry_timestamps=$(echo "$retry_timestamps" | jq --arg ts "$attempt_timestamp" '. + [$ts]')
+
     if [ $attempt -gt 1 ]; then
       log_event "RETRY" "Attempt $attempt/$max_retries for $(basename "$trigger_file")"
     fi
@@ -397,6 +411,18 @@ invoke_agent_with_retry() {
 
     attempt=$((attempt + 1))
   done
+
+  # All retries exhausted - move to DLQ
+  local trace_id=$(jq -r '.trace_id // ""' "$trigger_file" 2>/dev/null || echo "")
+  local to_agent=$(jq -r '.to_agent // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
+  local failure_reason="Agent failed after $max_retries attempts (exit code: $exit_code)"
+
+  # Move to dead letter queue (if function available)
+  if type move_to_dlq &>/dev/null; then
+    move_to_dlq "$trigger_file" "$failure_reason" "$exit_code" "$trace_id" "$retry_timestamps"
+    # Return special code 3 to indicate DLQ move (not a regular failure)
+    return 3
+  fi
 
   log_event "CRITICAL" "Failed after $max_retries attempts: $(basename "$trigger_file")"
   return 1
@@ -672,6 +698,9 @@ process_trigger() {
     PROCESSED_COUNT=$((PROCESSED_COUNT + 1))
   elif [ $result -eq 2 ]; then
     archive_trigger "$trigger_file" "invalid"
+  elif [ $result -eq 3 ]; then
+    # Trigger moved to DLQ - don't archive (already in dead-letter/)
+    log_event "DLQ" "Trigger moved to dead letter queue: $(basename "$trigger_file")"
   else
     archive_trigger "$trigger_file" "failed"
   fi
