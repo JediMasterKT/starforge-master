@@ -126,7 +126,7 @@ test_feature_flag_disabled() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 test_daemon_has_auto_qa_function() {
-  if grep -q "auto_qa_poll_loop" templates/bin/daemon-runner.sh; then
+  if grep -q "auto_qa_poll_loop" templates/bin/starforged; then
     pass "Daemon runner contains auto_qa_poll_loop function"
   else
     fail "Daemon runner missing auto_qa_poll_loop function"
@@ -138,7 +138,7 @@ test_daemon_has_auto_qa_function() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 test_daemon_starts_auto_qa() {
-  if grep -q "auto_qa_poll_loop &" templates/bin/daemon-runner.sh; then
+  if grep -q "auto_qa_poll_loop &" templates/bin/starforged; then
     pass "Daemon starts auto-QA loop in background"
   else
     fail "Daemon does not start auto-QA loop"

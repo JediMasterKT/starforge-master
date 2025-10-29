@@ -783,12 +783,18 @@ case "$COMMAND" in
             echo -e "${BLUE}Starting StarForge daemon...${NC}"
 
             # Start daemon silently (it will check if already running)
-            if "$STARFORGE_DIR/templates/bin/daemon.sh" --silent start; then
-                echo -e "${GREEN}✓ Daemon started successfully${NC}"
-                echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+            # Use deployed daemon.sh from .claude/bin/
+            if [ -f ".claude/bin/daemon.sh" ]; then
+                if .claude/bin/daemon.sh --silent start; then
+                    echo -e "${GREEN}✓ Daemon started successfully${NC}"
+                    echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+                else
+                    echo -e "${YELLOW}⚠️  Could not start daemon automatically${NC}"
+                    echo -e "${YELLOW}   Start manually: starforge daemon start${NC}"
+                fi
             else
-                echo -e "${YELLOW}⚠️  Could not start daemon automatically${NC}"
-                echo -e "${YELLOW}   Start manually: starforge daemon start${NC}"
+                echo -e "${YELLOW}⚠️  Daemon not found (install may be incomplete)${NC}"
+                echo -e "${YELLOW}   Try: starforge daemon start${NC}"
             fi
         fi
 
@@ -932,11 +938,12 @@ case "$COMMAND" in
         chmod +x "$CLAUDE_DIR/hooks"/*.sh "$CLAUDE_DIR/hooks"/*.py 2>/dev/null || true
         echo -e "${CHECK} Updated hooks"
 
-        # Update bin scripts (daemon, etc.)
+        # Update bin scripts (daemon, starforged, etc.)
         echo -e "${INFO}Updating bin scripts..."
         mkdir -p "$CLAUDE_DIR/bin"
         cp "$STARFORGE_DIR/templates/bin"/*.sh "$CLAUDE_DIR/bin/"
-        chmod +x "$CLAUDE_DIR/bin"/*.sh
+        cp "$STARFORGE_DIR/templates/bin/starforged" "$CLAUDE_DIR/bin/"
+        chmod +x "$CLAUDE_DIR/bin"/*
         echo -e "${CHECK} Updated bin scripts"
 
         # Update protocol files

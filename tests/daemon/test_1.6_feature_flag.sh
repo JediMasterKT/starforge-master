@@ -118,8 +118,8 @@ test_simulation_mode() {
   echo -e "${BLUE}Starting daemon in simulation mode...${NC}"
   if [ -f "bin/starforge" ]; then
     ./bin/starforge daemon start
-  elif [ -f ".claude/bin/daemon-runner.sh" ]; then
-    bash .claude/bin/daemon-runner.sh &
+  elif [ -f ".claude/bin/starforged" ]; then
+    bash .claude/bin/starforged &
     echo $! > .claude/daemon.pid
   else
     echo -e "${RED}✗ Cannot start daemon${NC}"
@@ -203,8 +203,8 @@ test_real_invocation_mode() {
   echo -e "${BLUE}Starting daemon in real invocation mode...${NC}"
   if [ -f "bin/starforge" ]; then
     ./bin/starforge daemon start
-  elif [ -f ".claude/bin/daemon-runner.sh" ]; then
-    bash .claude/bin/daemon-runner.sh &
+  elif [ -f ".claude/bin/starforged" ]; then
+    bash .claude/bin/starforged &
     echo $! > .claude/daemon.pid
   else
     echo -e "${RED}✗ Cannot start daemon${NC}"
@@ -286,16 +286,16 @@ test_graceful_fallback() {
 
   echo -e "${BLUE}Checking daemon error handling logic...${NC}"
 
-  # Check if daemon-runner.sh has fallback logic
-  if [ -f ".claude/bin/daemon-runner.sh" ]; then
-    if grep -q "command -v claude\|which claude\|claude.*not found" ".claude/bin/daemon-runner.sh"; then
+  # Check if starforged has fallback logic
+  if [ -f ".claude/bin/starforged" ]; then
+    if grep -q "command -v claude\|which claude\|claude.*not found" ".claude/bin/starforged"; then
       echo -e "${GREEN}✓ Daemon has Claude CLI existence check${NC}"
     else
       echo -e "${YELLOW}⚠ No explicit Claude CLI check found${NC}"
       echo -e "${YELLOW}   Daemon may fail ungracefully if Claude CLI is missing${NC}"
     fi
 
-    if grep -q "fallback\|simulation.*mode\|REAL_AGENT_INVOCATION.*false" ".claude/bin/daemon-runner.sh"; then
+    if grep -q "fallback\|simulation.*mode\|REAL_AGENT_INVOCATION.*false" ".claude/bin/starforged"; then
       echo -e "${GREEN}✓ Daemon has fallback/simulation logic${NC}"
     else
       echo -e "${YELLOW}⚠ No explicit fallback logic found${NC}"
@@ -316,8 +316,8 @@ test_graceful_fallback() {
     # Start daemon
     if [ -f "bin/starforge" ]; then
       ./bin/starforge daemon start 2>&1 | tee "$LOG_FILE"
-    elif [ -f ".claude/bin/daemon-runner.sh" ]; then
-      bash .claude/bin/daemon-runner.sh &
+    elif [ -f ".claude/bin/starforged" ]; then
+      bash .claude/bin/starforged &
       echo $! > .claude/daemon.pid
     fi
 
@@ -379,8 +379,8 @@ test_flag_toggle() {
 
   if [ -f "bin/starforge" ]; then
     ./bin/starforge daemon start
-  elif [ -f ".claude/bin/daemon-runner.sh" ]; then
-    bash .claude/bin/daemon-runner.sh &
+  elif [ -f ".claude/bin/starforged" ]; then
+    bash .claude/bin/starforged &
     echo $! > .claude/daemon.pid
   fi
 
@@ -398,8 +398,8 @@ test_flag_toggle() {
 
   if [ -f "bin/starforge" ]; then
     ./bin/starforge daemon start
-  elif [ -f ".claude/bin/daemon-runner.sh" ]; then
-    bash .claude/bin/daemon-runner.sh &
+  elif [ -f ".claude/bin/starforged" ]; then
+    bash .claude/bin/starforged &
     echo $! > .claude/daemon.pid
   fi
 

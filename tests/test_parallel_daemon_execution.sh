@@ -272,7 +272,7 @@ EOF
 EOF
 
   # Get next trigger (should be first.trigger - oldest)
-  # This tests the get_next_trigger function from daemon-runner.sh
+  # This tests the get_next_trigger function from starforged
   # We'll simulate it here with find and ls
   local next_trigger=$(ls -t "$TRIGGER_DIR"/*.trigger 2>/dev/null | tail -1)
 

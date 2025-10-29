@@ -97,7 +97,7 @@ test_end_to_end_execution() {
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
   # Check prerequisites
-  if [ ! -f ".claude/bin/daemon-runner.sh" ]; then
+  if [ ! -f ".claude/bin/starforged" ]; then
     echo -e "${RED}✗ Daemon runner not found${NC}"
     return 1
   fi
@@ -115,8 +115,8 @@ test_end_to_end_execution() {
   echo -e "${BLUE}Starting daemon...${NC}"
   if [ -f "bin/starforge" ]; then
     ./bin/starforge daemon start
-  elif [ -f ".claude/bin/daemon-runner.sh" ]; then
-    bash .claude/bin/daemon-runner.sh &
+  elif [ -f ".claude/bin/starforged" ]; then
+    bash .claude/bin/starforged &
     echo $! > .claude/daemon.pid
   else
     echo -e "${RED}✗ Cannot start daemon${NC}"
