@@ -1,16 +1,20 @@
 #!/bin/bash
-# Orchestrator Atomic Ticket Assignment
+# Orchestrator Atomic Ticket Assignment with Compensation
 # Purpose: Bundle 10+ assignment operations into 1 permission-free script
 # Impact: 10 prompts → 1 prompt per assignment × 3 agents = 27 prompts saved
+#
+# Compensation: Implements Saga pattern for automatic rollback on failures
+# Issue #341: Prevents partial assignment states (silent failures)
 #
 # Workaround for: https://github.com/anthropics/claude-code/issues/5465
 # (Permission patterns fail to match piped commands)
 
-set -e  # Exit on any error
+# NOTE: Do NOT use 'set -e' - we need explicit error handling for compensation
 
-# Load lock helpers for agent coordination
+# Load libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/lock-helpers.sh"
+source "$SCRIPT_DIR/../lib/compensation.sh"
 
 # Validate arguments
 if [ "$#" -ne 2 ]; then
@@ -54,14 +58,31 @@ if ! gh issue view $TICKET > /dev/null 2>&1; then
 fi
 echo "✅ Ticket #$TICKET verified"
 
-# Step 2: Update GitHub issue labels
+# Step 2: Update GitHub issue labels (WITH COMPENSATION)
 echo "🏷️  Step 2/8: Updating GitHub labels..."
-gh issue edit $TICKET --add-label "in-progress" --remove-label "ready"
+if ! gh issue edit $TICKET --add-label "in-progress" --remove-label "ready" 2>&1; then
+  log_failure "assignment" "$TICKET" "$AGENT" "GitHub label update failed"
+  compensation_exit "GitHub label update failed (Step 2)"
+fi
+
+# Register compensation action
+register_compensation "GitHub labels (in-progress → ready)" \
+  "gh issue edit $TICKET --remove-label in-progress --add-label ready"
+
 echo "✅ Labels updated: ready → in-progress"
 
-# Step 3: Add GitHub comment
+# Step 3: Add GitHub comment (WITH COMPENSATION)
 echo "💬 Step 3/8: Adding assignment comment..."
-gh issue comment $TICKET --body "Assigned to $AGENT. Starting implementation."
+if ! gh issue comment $TICKET --body "Assigned to $AGENT. Starting implementation." 2>&1; then
+  log_failure "assignment" "$TICKET" "$AGENT" "GitHub comment failed"
+  compensation_exit "GitHub comment failed (Step 3)"
+fi
+
+# NOTE: GitHub comments cannot be deleted via gh CLI (API limitation)
+# Compensation logs the failure - human review required if assignment fails
+register_compensation "GitHub comment (cannot auto-delete)" \
+  "echo '[MANUAL CLEANUP NEEDED] Delete comment on ticket #$TICKET: Assigned to $AGENT'"
+
 echo "✅ Comment added"
 
 # Step 4: Verify worktree exists
@@ -116,8 +137,8 @@ if [ -f "$STATUS_FILE" ]; then
   fi
 fi
 
-# Write status file (protected by lock)
-jq -n \
+# Write status file (protected by lock, WITH COMPENSATION)
+if ! jq -n \
   --arg agent "$AGENT" \
   --arg ticket "$TICKET" \
   --arg assigned_at "$(date -Iseconds)" \
@@ -131,51 +152,65 @@ jq -n \
     worktree: $worktree,
     branch: $branch,
     based_on: "origin/main"
-  }' > "$STATUS_FILE"
+  }' > "$STATUS_FILE" 2>&1; then
+  log_failure "assignment" "$TICKET" "$AGENT" "Status file creation failed"
+  compensation_exit "Status file creation failed (Step 7)"
+fi
+
+# Register compensation action
+register_compensation "Agent status file" \
+  "rm -f \"$STATUS_FILE\""
+
 echo "✅ Status file created: $STATUS_FILE"
 
 # Release lock (agent is now marked as working)
 unlock_agent "$AGENT"
 
-# Step 8: Create trigger for junior-dev
+# Step 8: Create trigger for junior-dev (WITH COMPENSATION)
 echo "🔔 Step 8/8: Creating trigger..."
 # Load trigger helpers if not already loaded
 if ! type trigger_junior_dev &> /dev/null; then
     source "$STARFORGE_CLAUDE_DIR/scripts/trigger-helpers.sh"
 fi
 
-trigger_junior_dev "$AGENT" $TICKET
+if ! trigger_junior_dev "$AGENT" $TICKET 2>&1; then
+    log_failure "assignment" "$TICKET" "$AGENT" "Trigger creation failed"
+    compensation_exit "Trigger creation failed (Step 8)"
+fi
 
 # Verify trigger was created
 sleep 1  # Allow filesystem sync
 TRIGGER_FILE=$(ls -t "$STARFORGE_CLAUDE_DIR/triggers/${AGENT}-implement_ticket-"*.trigger 2>/dev/null | head -1)
 
 if [ ! -f "$TRIGGER_FILE" ]; then
-    echo "❌ TRIGGER CREATION FAILED"
-    echo "   Rolling back assignment..."
-    gh issue edit $TICKET --remove-label "in-progress" --add-label "ready"
-    rm -f "$STATUS_FILE"
-    exit 1
+    log_failure "assignment" "$TICKET" "$AGENT" "Trigger file not found after creation"
+    compensation_exit "Trigger file not found (Step 8)"
 fi
 
 # Validate trigger JSON
 if ! jq empty "$TRIGGER_FILE" 2>/dev/null; then
     echo "❌ TRIGGER INVALID JSON"
     cat "$TRIGGER_FILE"
-    exit 1
+    log_failure "assignment" "$TICKET" "$AGENT" "Trigger contains invalid JSON"
+    compensation_exit "Trigger invalid JSON (Step 8)"
 fi
 
 # Verify trigger fields
-TO_AGENT=$(jq -r '.to_agent' "$TRIGGER_FILE")
-ACTION=$(jq -r '.action' "$TRIGGER_FILE")
-TICKET_IN_TRIGGER=$(jq -r '.context.ticket' "$TRIGGER_FILE")
+TO_AGENT=$(jq -r '.to_agent' "$TRIGGER_FILE" 2>/dev/null || echo "")
+ACTION=$(jq -r '.action' "$TRIGGER_FILE" 2>/dev/null || echo "")
+TICKET_IN_TRIGGER=$(jq -r '.context.ticket' "$TRIGGER_FILE" 2>/dev/null || echo "")
 
 if [ "$TO_AGENT" != "$AGENT" ] || [ "$ACTION" != "implement_ticket" ] || [ "$TICKET_IN_TRIGGER" != "$TICKET" ]; then
     echo "❌ TRIGGER DATA MISMATCH"
     echo "   Expected: $AGENT/implement_ticket/ticket=$TICKET"
     echo "   Got: $TO_AGENT/$ACTION/ticket=$TICKET_IN_TRIGGER"
-    exit 1
+    log_failure "assignment" "$TICKET" "$AGENT" "Trigger data mismatch"
+    compensation_exit "Trigger data mismatch (Step 8)"
 fi
+
+# Register compensation action
+register_compensation "Trigger file" \
+  "rm -f \"$TRIGGER_FILE\""
 
 echo "✅ Trigger created and verified: $(basename $TRIGGER_FILE)"
 
@@ -189,3 +224,6 @@ echo "Branch:   $BRANCH"
 echo "Worktree: $WORKTREE"
 echo "Trigger:  $(basename $TRIGGER_FILE)"
 echo "========================================="
+
+# Clear compensation stack (assignment succeeded - no rollback needed)
+clear_compensations
