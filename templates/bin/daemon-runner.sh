@@ -4,7 +4,20 @@
 
 set -e
 
-# Get project root
+# Environment Setup
+# -----------------
+# PROJECT_ROOT = Current working directory where daemon is invoked
+#                Daemon is always started from project root (not from .claude/)
+#                This is where .env, src/, and templates/ are located
+#
+# CLAUDE_DIR   = Deployed StarForge instance ($PROJECT_ROOT/.claude)
+#                Contains: triggers/, logs/, config/, agents/
+#                Always relative to PROJECT_ROOT, never an absolute path
+#
+# This pattern supports:
+# - Main repo development (PROJECT_ROOT = starforge-master/)
+# - User projects (PROJECT_ROOT = any project with .claude/ installed)
+# - Git worktrees (each worktree has its own .claude/)
 PROJECT_ROOT="$(pwd)"
 CLAUDE_DIR="$PROJECT_ROOT/.claude"
 TRIGGER_DIR="$CLAUDE_DIR/triggers"
@@ -29,6 +42,7 @@ PROCESS_MONITOR_INTERVAL=10  # Check running processes every 10 seconds
 # Ensure required directories exist
 mkdir -p "$TRIGGER_DIR/processed/invalid"
 mkdir -p "$TRIGGER_DIR/processed/failed"
+mkdir -p "$TRIGGER_DIR/staging"
 mkdir -p "$CLAUDE_DIR/logs"
 mkdir -p "$CLAUDE_DIR/daemon"
 
@@ -49,6 +63,18 @@ log_event() {
   echo "[$timestamp] [$trace_id] $level: $message" >> "$LOG_FILE"
   echo "[$timestamp] [$trace_id] $level: $message" >&2
 }
+
+# Source atomic trigger operations library
+if [ -f "$CLAUDE_DIR/lib/atomic-triggers.sh" ]; then
+  source "$CLAUDE_DIR/lib/atomic-triggers.sh"
+elif [ -f "$PROJECT_ROOT/templates/lib/atomic-triggers.sh" ]; then
+  source "$PROJECT_ROOT/templates/lib/atomic-triggers.sh"
+elif [ -f "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh" ]; then
+  source "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh"
+else
+  log_event "ERROR" "atomic-triggers.sh not found"
+  exit 1
+fi
 
 # Load environment variables (Discord webhooks, etc.)
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -676,8 +702,21 @@ process_trigger() {
     return 0
   fi
 
+  # Claim trigger atomically (.trigger → .processing)
+  # This prevents concurrent daemons from processing the same trigger
+  claim_trigger_for_processing "$trigger_file"
+
+  if [ $? -ne 0 ]; then
+    # Another daemon claimed it, or file doesn't exist
+    log_event "SKIP" "Trigger already claimed or missing: $(basename "$trigger_file")"
+    return 0
+  fi
+
+  # Work on .processing file from here on
+  local processing_file="$PROCESSING_FILE_PATH"
+
   # Mark as currently processing
-  save_state "$trigger_file"
+  save_state "$processing_file"
 
   # Task 2: Validate claude CLI available if real invocation enabled
   if [ "$REAL_AGENT_INVOCATION" = "true" ] && ! command -v claude &> /dev/null; then
@@ -685,24 +724,24 @@ process_trigger() {
     return 2
   fi
 
-  # Invoke agent with retry
-  invoke_agent_with_retry "$trigger_file"
+  # Invoke agent with retry (using .processing file)
+  invoke_agent_with_retry "$processing_file"
   local result=$?
 
-  # Mark as seen
+  # Mark as seen (use original trigger filename for deduplication)
   mark_as_processed "$trigger_file"
 
-  # Archive based on result
+  # Archive based on result (archives .processing file)
   if [ $result -eq 0 ]; then
-    archive_trigger "$trigger_file" "success"
+    archive_trigger "$processing_file" "success"
     PROCESSED_COUNT=$((PROCESSED_COUNT + 1))
   elif [ $result -eq 2 ]; then
-    archive_trigger "$trigger_file" "invalid"
+    archive_trigger "$processing_file" "invalid"
   elif [ $result -eq 3 ]; then
     # Trigger moved to DLQ - don't archive (already in dead-letter/)
-    log_event "DLQ" "Trigger moved to dead letter queue: $(basename "$trigger_file")"
+    log_event "DLQ" "Trigger moved to dead letter queue: $(basename "$processing_file")"
   else
-    archive_trigger "$trigger_file" "failed"
+    archive_trigger "$processing_file" "failed"
   fi
 
   # Update state
@@ -798,6 +837,13 @@ process_trigger_queue_parallel() {
 
 resume_processing() {
   load_state
+
+  # Clean up orphaned trigger files from crashes
+  log_event "RECOVERY" "Checking for orphaned trigger files"
+  local cleaned=$(cleanup_orphaned_files)
+  if [ "$cleaned" -gt 0 ]; then
+    log_event "RECOVERY" "Cleaned up $cleaned orphaned trigger file(s)"
+  fi
 
   # Parallel mode: Clean up orphaned PIDs
   if [ "$PARALLEL_DAEMON" = "true" ]; then
