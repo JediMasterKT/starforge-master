@@ -49,16 +49,6 @@ mkdir -p "$CLAUDE_DIR/daemon"
 # Touch log file
 touch "$LOG_FILE"
 
-# Source atomic trigger operations library
-if [ -f "$PROJECT_ROOT/templates/lib/atomic-triggers.sh" ]; then
-  source "$PROJECT_ROOT/templates/lib/atomic-triggers.sh"
-elif [ -f "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh" ]; then
-  source "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh"
-else
-  log_event "ERROR" "atomic-triggers.sh not found"
-  exit 1
-fi
-
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Logging
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -73,6 +63,16 @@ log_event() {
   echo "[$timestamp] [$trace_id] $level: $message" >> "$LOG_FILE"
   echo "[$timestamp] [$trace_id] $level: $message" >&2
 }
+
+# Source atomic trigger operations library
+if [ -f "$PROJECT_ROOT/templates/lib/atomic-triggers.sh" ]; then
+  source "$PROJECT_ROOT/templates/lib/atomic-triggers.sh"
+elif [ -f "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh" ]; then
+  source "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh"
+else
+  log_event "ERROR" "atomic-triggers.sh not found"
+  exit 1
+fi
 
 # Load environment variables (Discord webhooks, etc.)
 if [ -f "$PROJECT_ROOT/.env" ]; then
