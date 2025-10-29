@@ -538,3 +538,64 @@ PRs ready: ${pr_count}
     "$COLOR_SUCCESS" \
     "$fields"
 }
+
+#
+# send_dlq_alert <trigger_filename> <agent> <trace_id> <failure_reason> <exit_code>
+#
+# Sends alert when trigger moves to dead letter queue after 3 failed attempts.
+# Includes @mention if DISCORD_USER_ID is configured.
+#
+# Args:
+#   trigger_filename: Name of trigger file (e.g., "agent-action-123.trigger")
+#   agent: Agent name that failed (e.g., "junior-dev-a")
+#   trace_id: Unique trace ID for this trigger
+#   failure_reason: Human-readable failure description
+#   exit_code: Last exit code from agent invocation
+#
+send_dlq_alert() {
+  local trigger_filename=$1
+  local agent=$2
+  local trace_id=$3
+  local failure_reason=$4
+  local exit_code=$5
+
+  # Build mention string if user ID configured
+  local mention=""
+  if [ -n "$DISCORD_USER_ID" ]; then
+    mention="<@${DISCORD_USER_ID}> "
+  fi
+
+  local description="${mention}⚠️ Trigger failed 3 times and moved to dead letter queue
+
+**Trigger:** \`${trigger_filename}\`
+**Agent:** ${agent}
+**Exit Code:** ${exit_code}
+**Reason:** ${failure_reason}
+
+**Recovery:**
+\`\`\`bash
+starforge dlq retry ${trigger_filename}
+\`\`\`
+
+**View all DLQ triggers:**
+\`\`\`bash
+starforge dlq list
+\`\`\`"
+
+  local fields=$(cat << FIELDS_JSON
+[
+  {"name": "Trace ID", "value": "${trace_id}", "inline": false},
+  {"name": "Status", "value": "⏸️ Paused (in DLQ)", "inline": true},
+  {"name": "Manual Action Required", "value": "Review and retry manually", "inline": true}
+]
+FIELDS_JSON
+)
+
+  send_discord_daemon_notification \
+    "$agent" \
+    "💀 Dead Letter Queue Alert" \
+    "$description" \
+    "$COLOR_ERROR" \
+    "$fields" \
+    "$trace_id"
+}

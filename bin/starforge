@@ -1109,6 +1109,23 @@ case "$COMMAND" in
         exec "./.claude/scripts/trigger-monitor.sh" "$@"
         ;;
 
+    dlq)
+        # Manage Dead Letter Queue (failed triggers)
+        if [ ! -d ".claude" ]; then
+            echo -e "${RED}❌ StarForge not installed in this project${NC}"
+            echo -e "   Run: starforge install"
+            exit 1
+        fi
+
+        if [ ! -f ".claude/bin/dlq.sh" ]; then
+            echo -e "${RED}❌ DLQ manager not found. Run 'starforge update' to install.${NC}"
+            exit 1
+        fi
+
+        # Route to DLQ manager in user's .claude/bin/
+        "./.claude/bin/dlq.sh" "$@"
+        ;;
+
     daemon)
         # Manage the autonomous daemon
         if [ ! -d ".claude" ]; then
