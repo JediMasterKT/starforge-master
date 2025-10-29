@@ -5,7 +5,7 @@
 set -e
 
 # Get StarForge directory
-STARFORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STARFORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_DIR="$STARFORGE_DIR/.claude"
 PID_FILE="$CLAUDE_DIR/daemon.pid"
 LOCK_DIR="$CLAUDE_DIR/daemon.lock"
