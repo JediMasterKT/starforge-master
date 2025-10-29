@@ -50,8 +50,11 @@ acquire_lock() {
   CURRENT_LOCK_DIR="$lock_dir"
 
   # Try to acquire lock with timeout
-  local elapsed=0
-  while [ $elapsed -lt $timeout ]; do
+  # Use iteration counting to match 0.1s sleep intervals
+  local iterations=0
+  local max_iterations=$((timeout * 10))  # 0.1s per iteration = 10 iterations per second
+
+  while [ $iterations -lt $max_iterations ]; do
     # Try to create lock directory (atomic operation)
     if mkdir "$lock_dir" 2>/dev/null; then
       # Write lock metadata for debugging
@@ -61,7 +64,7 @@ acquire_lock() {
 
     # Lock acquisition failed, wait and retry
     sleep 0.1
-    elapsed=$((elapsed + 1))
+    iterations=$((iterations + 1))
   done
 
   # Timeout

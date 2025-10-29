@@ -100,6 +100,9 @@ if ! lock_agent "$AGENT" 30; then
   exit 1
 fi
 
+# Ensure lock is released on ANY exit (normal or error)
+trap 'unlock_agent "$AGENT"' EXIT ERR
+
 # Check if agent is already assigned (double-check after acquiring lock)
 STATUS_FILE="$STARFORGE_CLAUDE_DIR/coordination/${AGENT}-status.json"
 if [ -f "$STATUS_FILE" ]; then

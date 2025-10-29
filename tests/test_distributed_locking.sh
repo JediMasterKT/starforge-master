@@ -109,11 +109,12 @@ echo -e "${YELLOW}Test 6: Cleanup stale locks${NC}"
 LOCK_DIR="${STARFORGE_CLAUDE_DIR:-$PWD/.claude}/locks"
 mkdir -p "$LOCK_DIR"
 
-# Create fake stale lock with non-existent PID
-echo "2025-10-29T20:00:00Z PID:999999 HOST:test" > "$LOCK_DIR/test-stale.lock"
+# Create fake stale lock with non-existent PID (must be directory with metadata file)
+mkdir -p "$LOCK_DIR/test-stale.lock"
+echo "2025-10-29T20:00:00Z PID:999999 HOST:test" > "$LOCK_DIR/test-stale.lock/metadata"
 
 cleanup_stale_locks
-if [ ! -f "$LOCK_DIR/test-stale.lock" ]; then
+if [ ! -d "$LOCK_DIR/test-stale.lock" ]; then
   echo -e "${GREEN}✓ Stale lock cleaned up${NC}"
 else
   echo -e "${YELLOW}⚠ Stale lock not removed (may be locked by another process)${NC}"
