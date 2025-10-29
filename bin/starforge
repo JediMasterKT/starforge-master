@@ -1594,6 +1594,7 @@ case "$COMMAND" in
         JQ_FILTER+=")"
 
         # Query events
+        CLAUDE_DIR=".claude"
         EVENT_DIR="$CLAUDE_DIR/events"
 
         if [ ! -d "$EVENT_DIR" ]; then

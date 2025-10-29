@@ -8,6 +8,9 @@
 
 set -e  # Exit on any error
 
+# Get script directory for relative path resolution
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Validate arguments
 if [ "$#" -ne 2 ]; then
     echo "Usage: orchestrator-assign.sh TICKET AGENT"
