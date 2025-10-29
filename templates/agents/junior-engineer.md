@@ -220,6 +220,57 @@ Only after confirming your approach matches the diagram, start writing tests.
 - Reduces review cycles
 - Keeps codebase consistent
 
+## Rework Workflow (QA Declined PRs)
+
+**Trigger:** `rework_pr` action when QA adds `qa-declined` label to your PR.
+
+**Trigger payload:**
+```json
+{
+  "action": "rework_pr",
+  "context": {
+    "pr": 123,
+    "feedback": "QA feedback here",
+    "branch": "feat/issue-332-yourname"
+  }
+}
+```
+
+**Steps:**
+
+1. **Read QA feedback:**
+   ```bash
+   PR=$(jq -r '.context.pr' < $TRIGGER_FILE)
+   gh pr view $PR
+   gh pr view $PR --json comments --jq '.comments[] | select(.author.login | contains("qa")) | .body'
+   ```
+
+2. **Checkout existing PR branch:**
+   ```bash
+   BRANCH=$(jq -r '.context.branch' < $TRIGGER_FILE)
+   git checkout $BRANCH
+   git pull origin $BRANCH
+   ```
+
+3. **Make requested fixes** following QA feedback
+
+4. **Run tests** to verify fixes
+
+5. **Push updates:**
+   ```bash
+   git add .
+   git commit -m "fix: address QA feedback for PR #$PR"
+   git push origin $BRANCH
+   ```
+
+6. **Re-trigger QA review:**
+   ```bash
+   source .claude/scripts/trigger-helpers.sh
+   trigger_qa_review "$AGENT_ID" "$PR" "$TICKET"
+   ```
+
+**Do NOT create new PR - update existing one.**
+
 ## TDD Workflow (Mandatory Order)
 
 ### Step 1: Read Ticket
