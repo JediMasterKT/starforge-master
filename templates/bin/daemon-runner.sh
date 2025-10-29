@@ -65,7 +65,9 @@ log_event() {
 }
 
 # Source atomic trigger operations library
-if [ -f "$PROJECT_ROOT/templates/lib/atomic-triggers.sh" ]; then
+if [ -f "$CLAUDE_DIR/lib/atomic-triggers.sh" ]; then
+  source "$CLAUDE_DIR/lib/atomic-triggers.sh"
+elif [ -f "$PROJECT_ROOT/templates/lib/atomic-triggers.sh" ]; then
   source "$PROJECT_ROOT/templates/lib/atomic-triggers.sh"
 elif [ -f "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh" ]; then
   source "$CLAUDE_DIR/../templates/lib/atomic-triggers.sh"
