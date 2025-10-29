@@ -91,7 +91,7 @@ get_webhook_for_agent() {
 }
 
 #
-# send_discord_daemon_notification <agent> <title> <description> <color> <fields_json>
+# send_discord_daemon_notification <agent> <title> <description> <color> <fields_json> <trace_id>
 #
 # Sends a Discord embed notification to the agent's dedicated channel.
 #
@@ -101,6 +101,7 @@ get_webhook_for_agent() {
 #   description: Embed description/main text
 #   color: Decimal color code (use COLOR_* constants)
 #   fields_json: JSON array of fields (e.g., '[{"name":"Ticket","value":"#123"}]')
+#   trace_id: Trace ID for end-to-end tracking (optional, e.g., "TRACE-1234567890-a3f9b2")
 #
 # Example:
 #   send_discord_daemon_notification \
@@ -108,7 +109,8 @@ get_webhook_for_agent() {
 #     "✅ Agent Completed" \
 #     "**junior-dev-a** finished successfully" \
 #     "$COLOR_SUCCESS" \
-#     '[{"name":"Duration","value":"5m 23s","inline":true}]'
+#     '[{"name":"Duration","value":"5m 23s","inline":true}]' \
+#     "TRACE-1234567890-a3f9b2"
 #
 send_discord_daemon_notification() {
   local agent=$1
@@ -116,6 +118,7 @@ send_discord_daemon_notification() {
   local description=$3
   local color=$4
   local fields=$5
+  local trace_id=${6:-""}
 
   # Get webhook URL for this agent
   local webhook_url=$(get_webhook_for_agent "$agent")
@@ -137,6 +140,13 @@ send_discord_daemon_notification() {
   # Generate ISO 8601 timestamp
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
+  # Inject trace_id as first field if provided
+  local final_fields="$fields"
+  if [ -n "$trace_id" ]; then
+    # Prepend trace_id field to existing fields array
+    final_fields=$(echo "$fields" | jq --arg trace "$trace_id" '. = [{"name":"Trace ID","value":$trace,"inline":false}] + .')
+  fi
+
   # Build JSON payload with Discord embed format
   local payload=$(cat <<EOF
 {
@@ -144,7 +154,7 @@ send_discord_daemon_notification() {
     "title": "$title",
     "description": "$description",
     "color": $color,
-    "fields": $fields,
+    "fields": $final_fields,
     "timestamp": "$timestamp",
     "footer": {
       "text": "StarForge Daemon"
@@ -163,79 +173,24 @@ EOF
 }
 
 #
-# send_agent_start_notification <agent> <action> <from_agent> <ticket> [message] [pr] [description]
+# send_agent_start_notification <agent> <action> <from_agent> <ticket> <trace_id>
 #
-# Convenience wrapper for agent start notifications with rich context support.
-#
-# Args:
-#   agent: Agent name (e.g., "qa-engineer")
-#   action: Action type (e.g., "review_pr")
-#   from_agent: Agent that triggered this (e.g., "main-claude")
-#   ticket: Ticket number (default: N/A)
-#   message: (Optional) Rich message/title for the notification
-#   pr: (Optional) PR number to link to
-#   description: (Optional) Context/description text
-#
-# Example:
-#   send_agent_start_notification "qa-engineer" "review_pr" "main-claude" "310" \
-#     "Reviewing PR #304: daemon fix" "304" "Critical path bug fix"
+# Convenience wrapper for agent start notifications.
 #
 send_agent_start_notification() {
   local agent=$1
   local action=$2
   local from_agent=$3
   local ticket=${4:-N/A}
-  local message=${5:-}
-  local pr=${6:-}
-  local description=${7:-}
-
-  # Build description (use message if provided, otherwise fallback)
-  local desc=""
-  if [ -n "$message" ]; then
-    desc="$message"
-  else
-    desc="**$agent** is now working"
-  fi
-
-  # Build fields array
-  local fields="["
-  fields="${fields}{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},"
-  fields="${fields}{\"name\":\"From\",\"value\":\"$from_agent\",\"inline\":true},"
-  fields="${fields}{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}"
-
-  # Add PR field if PR number provided and numeric
-  if [ -n "$pr" ] && [[ "$pr" =~ ^[0-9]+$ ]]; then
-    # Get repo name for PR link
-    local repo_name=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "owner/repo")
-    local pr_url="https://github.com/${repo_name}/pull/${pr}"
-    local pr_value="#${pr} → ${pr_url}"
-    fields="${fields},{\"name\":\"PR\",\"value\":\"$pr_value\",\"inline\":false}"
-  fi
-
-  # Add Context field if description provided (truncate if too long)
-  if [ -n "$description" ]; then
-    # Discord field value limit is 1024 chars
-    if [ ${#description} -gt 1000 ]; then
-      description="${description:0:1000}..."
-    fi
-    # Escape double quotes in description
-    description="${description//\"/\\\"}"
-    fields="${fields},{\"name\":\"Context\",\"value\":\"$description\",\"inline\":false}"
-  fi
-
-  fields="${fields}]"
+  local trace_id=${5:-""}
 
   send_discord_daemon_notification \
     "$agent" \
     "🚀 Agent Started" \
-    "$desc" \
+    "**$agent** is now working" \
     "$COLOR_INFO" \
-    "$fields"
-
-  # Return PR number for caller (if provided)
-  if [ -n "$pr" ] && [[ "$pr" =~ ^[0-9]+$ ]]; then
-    echo "$pr"
-  fi
+    "[{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"From\",\"value\":\"$from_agent\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]" \
+    "$trace_id"
 }
 
 #
@@ -257,7 +212,7 @@ send_agent_progress_notification() {
 }
 
 #
-# send_agent_complete_notification <agent> <duration_min> <duration_sec> <action> <ticket>
+# send_agent_complete_notification <agent> <duration_min> <duration_sec> <action> <ticket> <trace_id>
 #
 # Convenience wrapper for agent completion notifications.
 #
@@ -267,17 +222,19 @@ send_agent_complete_notification() {
   local duration_sec=$3
   local action=$4
   local ticket=${5:-N/A}
+  local trace_id=${6:-""}
 
   send_discord_daemon_notification \
     "$agent" \
     "✅ Agent Completed" \
     "**$agent** finished successfully" \
     "$COLOR_SUCCESS" \
-    "[{\"name\":\"Duration\",\"value\":\"${duration_min}m ${duration_sec}s\",\"inline\":true},{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]"
+    "[{\"name\":\"Duration\",\"value\":\"${duration_min}m ${duration_sec}s\",\"inline\":true},{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]" \
+    "$trace_id"
 }
 
 #
-# send_agent_timeout_notification <agent> <action> <ticket>
+# send_agent_timeout_notification <agent> <action> <ticket> <trace_id>
 #
 # Convenience wrapper for agent timeout notifications.
 #
@@ -285,17 +242,19 @@ send_agent_timeout_notification() {
   local agent=$1
   local action=$2
   local ticket=${3:-N/A}
+  local trace_id=${4:-""}
 
   send_discord_daemon_notification \
     "$agent" \
     "⏰ Agent Timeout" \
     "**$agent** exceeded 30-minute limit" \
     "$COLOR_ERROR" \
-    "[{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]"
+    "[{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]" \
+    "$trace_id"
 }
 
 #
-# send_agent_error_notification <agent> <exit_code> <duration_min> <ticket>
+# send_agent_error_notification <agent> <exit_code> <duration_min> <ticket> <trace_id>
 #
 # Convenience wrapper for agent error notifications.
 #
@@ -304,13 +263,15 @@ send_agent_error_notification() {
   local exit_code=$2
   local duration_min=$3
   local ticket=${4:-N/A}
+  local trace_id=${5:-""}
 
   send_discord_daemon_notification \
     "$agent" \
     "❌ Agent Failed" \
     "**$agent** crashed with exit code $exit_code" \
     "$COLOR_ERROR" \
-    "[{\"name\":\"Exit Code\",\"value\":\"$exit_code\",\"inline\":true},{\"name\":\"Duration\",\"value\":\"${duration_min}m\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]"
+    "[{\"name\":\"Exit Code\",\"value\":\"$exit_code\",\"inline\":true},{\"name\":\"Duration\",\"value\":\"${duration_min}m\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]" \
+    "$trace_id"
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
