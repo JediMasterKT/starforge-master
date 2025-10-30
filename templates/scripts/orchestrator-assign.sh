@@ -11,8 +11,10 @@
 
 # NOTE: Do NOT use 'set -e' - we need explicit error handling for compensation
 
-# Load libraries
+# Get script directory for relative path resolution
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load libraries
 source "$SCRIPT_DIR/../lib/lock-helpers.sh"
 source "$SCRIPT_DIR/../lib/compensation.sh"
 
@@ -70,6 +72,10 @@ register_compensation "GitHub labels (in-progress → ready)" \
   "gh issue edit $TICKET --remove-label in-progress --add-label ready"
 
 echo "✅ Labels updated: ready → in-progress"
+
+# Log event
+source "$SCRIPT_DIR/../lib/event-log.sh" 2>/dev/null || true
+log_event "orchestrator" "ticket_assigned" ticket=$TICKET agent=$AGENT status=in-progress
 
 # Step 3: Add GitHub comment (WITH COMPENSATION)
 echo "💬 Step 3/8: Adding assignment comment..."
