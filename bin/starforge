@@ -635,7 +635,7 @@ check_file_counts() {
     local all_passed=true
 
     # Check lib files
-    local expected_lib=11
+    local expected_lib=12  # CHANGED: additional helper file added
     local actual_lib=$(find .claude/lib -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
 
     if [ "$actual_lib" -eq "$expected_lib" ]; then
@@ -662,14 +662,14 @@ check_file_counts() {
     fi
 
     # Check agent definitions
-    local expected_agents=5
+    local expected_agents=6  # CHANGED: teacher-agent added
     local actual_agents=$(find .claude/agents -maxdepth 1 -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 
     if [ "$actual_agents" -eq "$expected_agents" ]; then
         echo -e "${GREEN}✅ Agent definitions present ($actual_agents/$expected_agents)${NC}"
     else
         echo -e "${RED}❌ Agent definitions incomplete ($actual_agents/$expected_agents)${NC}"
-        echo "   Expected: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent"
+        echo "   Expected: orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent, teacher-agent"
         all_passed=false
     fi
 
@@ -1030,18 +1030,31 @@ case "$COMMAND" in
         echo "  - Settings (settings.json)"
         echo "  - Configuration templates (.env.example for Discord webhooks)"
 
-        # Auto-restart daemon after successful update
+        # Auto-restart daemon after successful update (only if it was running)
         echo ""
-        echo -e "${BLUE}Restarting StarForge daemon...${NC}"
 
-        # Restart daemon silently (idempotent - will start if not running)
-        if "$CLAUDE_DIR/bin/daemon.sh" --silent restart 2>/dev/null || \
-           "$CLAUDE_DIR/bin/daemon.sh" --silent start 2>/dev/null; then
-            echo -e "${GREEN}✓ Daemon restarted successfully${NC}"
-            echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+        # Check if daemon is actually running before restart attempt
+        if [ -f "$CLAUDE_DIR/daemon.pid" ]; then
+            local daemon_pid=$(cat "$CLAUDE_DIR/daemon.pid" 2>/dev/null)
+
+            # Check if daemon process is actually running
+            if [ -n "$daemon_pid" ] && kill -0 "$daemon_pid" 2>/dev/null; then
+                echo -e "${BLUE}Restarting StarForge daemon...${NC}"
+                if "$CLAUDE_DIR/bin/daemon.sh" --silent restart 2>/dev/null; then
+                    echo -e "${GREEN}✓ Daemon restarted successfully${NC}"
+                    echo -e "${BLUE}Monitor activity: starforge daemon status${NC}"
+                else
+                    echo -e "${YELLOW}⚠️  Could not restart daemon automatically${NC}"
+                    echo -e "${YELLOW}   Restart manually: starforge daemon restart${NC}"
+                fi
+            else
+                # Daemon PID file exists but process is dead
+                echo -e "${BLUE}Daemon not running (skipping restart)${NC}"
+                rm -f "$CLAUDE_DIR/daemon.pid"
+            fi
         else
-            echo -e "${YELLOW}⚠️  Could not restart daemon automatically${NC}"
-            echo -e "${YELLOW}   Restart manually: starforge daemon restart${NC}"
+            # No PID file - daemon was not running
+            echo -e "${BLUE}Daemon not running (skipping restart)${NC}"
         fi
         echo ""
         echo -e "${GREEN}Preserved:${NC}"

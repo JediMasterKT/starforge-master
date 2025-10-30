@@ -36,6 +36,14 @@ mkdir -p "$CLAUDE_DIR/daemon"
 # Touch log file
 touch "$LOG_FILE"
 
+# Load lock helpers for trigger coordination
+LOCK_HELPERS="$PROJECT_ROOT/templates/lib/lock-helpers.sh"
+if [ -f "$LOCK_HELPERS" ]; then
+  source "$LOCK_HELPERS"
+elif [ -f "$CLAUDE_DIR/../templates/lib/lock-helpers.sh" ]; then
+  source "$CLAUDE_DIR/../templates/lib/lock-helpers.sh"
+fi
+
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Logging
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -664,11 +672,21 @@ get_next_trigger() {
 
 process_trigger() {
   local trigger_file=$1
+  local trigger_basename=$(basename "$trigger_file")
 
-  # Skip if already processed
+  # Try to acquire lock on this trigger (prevents multiple daemons claiming same trigger)
+  # Use short timeout since this is in a polling loop
+  if ! lock_trigger "$trigger_file" 2; then
+    # Another daemon is processing this trigger, skip it
+    log_event "SKIP" "Trigger locked by another daemon: $trigger_basename"
+    return 0
+  fi
+
+  # Skip if already processed (double-check after acquiring lock)
   if was_already_processed "$trigger_file"; then
-    log_event "SKIP" "Already processed: $(basename "$trigger_file")"
+    log_event "SKIP" "Already processed: $trigger_basename"
     rm -f "$trigger_file" 2>/dev/null || true
+    unlock_trigger
     return 0
   fi
 
@@ -678,6 +696,7 @@ process_trigger() {
   # Task 2: Validate claude CLI available if real invocation enabled
   if [ "$REAL_AGENT_INVOCATION" = "true" ] && ! command -v claude &> /dev/null; then
     log_event "ERROR" "claude CLI not found in PATH (required for agent invocation)" >> "$LOG_FILE"
+    unlock_trigger
     return 2
   fi
 
@@ -700,6 +719,9 @@ process_trigger() {
 
   # Update state
   save_state ""
+
+  # Release trigger lock
+  unlock_trigger
 
   return $result
 }
