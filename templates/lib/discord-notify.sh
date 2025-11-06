@@ -208,7 +208,7 @@ send_agent_progress_notification() {
 }
 
 #
-# send_agent_complete_notification <agent> <duration_min> <duration_sec> <action> <ticket> <trace_id>
+# send_agent_complete_notification <agent> <duration_min> <duration_sec> <action> <ticket> <message> <pr> <trace_id>
 #
 # Convenience wrapper for agent completion notifications.
 #
@@ -218,12 +218,45 @@ send_agent_complete_notification() {
   local duration_sec=$3
   local action=$4
   local ticket=${5:-N/A}
-  local trace_id=${6:-""}
+  local message=${6:-}
+  local pr=${7:-}
+  local trace_id=${8:-""}
+
+  # Build description with optional PR link
+  local description="**$agent** finished successfully"
+
+  if [ -n "$message" ]; then
+    description="${description}
+
+${message}"
+  fi
+
+  if [ -n "$pr" ]; then
+    # Extract repo info from git remote
+    local repo_url=$(git config --get remote.origin.url 2>/dev/null || echo "")
+    local pr_url=""
+
+    if [ -n "$repo_url" ]; then
+      # Convert git@github.com:user/repo.git to https://github.com/user/repo
+      local github_url=$(echo "$repo_url" | sed 's/git@github.com:/https:\/\/github.com\//' | sed 's/\.git$//')
+      pr_url="${github_url}/pull/${pr}"
+    fi
+
+    if [ -n "$pr_url" ]; then
+      description="${description}
+
+PR: ${pr_url}"
+    else
+      description="${description}
+
+PR: #${pr}"
+    fi
+  fi
 
   send_discord_daemon_notification \
     "$agent" \
     "✅ Agent Completed" \
-    "**$agent** finished successfully" \
+    "$description" \
     "$COLOR_SUCCESS" \
     "[{\"name\":\"Duration\",\"value\":\"${duration_min}m ${duration_sec}s\",\"inline\":true},{\"name\":\"Action\",\"value\":\"$action\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]" \
     "$trace_id"

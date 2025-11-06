@@ -42,45 +42,39 @@ is_agent_busy() {
 }
 
 # mark_agent_busy - Acquire slot with PID and context
-# Usage: mark_agent_busy "junior-dev-a" "12345" "52"
+# Usage: mark_agent_busy "junior-dev-a" "12345" "52" "message" "304"
 # Args:
 #   $1 - agent ID (e.g., "junior-dev-a")
 #   $2 - process PID
 #   $3 - ticket number (optional, can be empty for QA/orchestrator)
+#   $4 - message (optional, for notifications)
+#   $5 - pr number (optional, for notifications)
 mark_agent_busy() {
   local agent=$1
   local pid=$2
   local ticket=$3
+  local message=${4:-}
+  local pr=${5:-}
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
   # Create temporary file for atomic update
   local temp_file=$(mktemp)
 
-  # Build JSON update
-  if [ -n "$ticket" ]; then
-    # With ticket (junior-dev agents)
-    jq --arg agent "$agent" \
-       --arg pid "$pid" \
-       --arg ticket "$ticket" \
-       --arg timestamp "$timestamp" \
-       '.[$agent] = {
-         "status": "busy",
-         "pid": $pid,
-         "ticket": $ticket,
-         "started_at": $timestamp
-       }' "$SLOTS_FILE" > "$temp_file"
-  else
-    # Without ticket (qa-engineer, orchestrator)
-    jq --arg agent "$agent" \
-       --arg pid "$pid" \
-       --arg timestamp "$timestamp" \
-       '.[$agent] = {
-         "status": "busy",
-         "pid": $pid,
-         "ticket": null,
-         "started_at": $timestamp
-       }' "$SLOTS_FILE" > "$temp_file"
-  fi
+  # Build JSON update with message and pr fields
+  jq --arg agent "$agent" \
+     --arg pid "$pid" \
+     --arg ticket "$ticket" \
+     --arg message "$message" \
+     --arg pr "$pr" \
+     --arg timestamp "$timestamp" \
+     '.[$agent] = {
+       "status": "busy",
+       "pid": $pid,
+       "ticket": ($ticket | if . == "" then null else . end),
+       "message": ($message | if . == "" then null else . end),
+       "pr": ($pr | if . == "" then null else . end),
+       "started_at": $timestamp
+     }' "$SLOTS_FILE" > "$temp_file"
 
   # Atomic move
   mv "$temp_file" "$SLOTS_FILE"

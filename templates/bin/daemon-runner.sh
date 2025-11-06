@@ -365,7 +365,7 @@ invoke_agent() {
     if type send_agent_complete_notification &>/dev/null; then
       local duration_min=$((duration / 60))
       local duration_sec=$((duration % 60))
-      send_agent_complete_notification "$to_agent" "$duration_min" "$duration_sec" "$action" "$ticket" "$trace_id"
+      send_agent_complete_notification "$to_agent" "$duration_min" "$duration_sec" "$action" "$ticket" "$message" "$pr" "$trace_id"
     fi
 
     return 0
@@ -481,6 +481,10 @@ invoke_agent_parallel() {
   local action=$(jq -r '.action // "unknown"' "$trigger_file" 2>/dev/null || echo "unknown")
   local ticket=$(jq -r '.context.ticket // ""' "$trigger_file" 2>/dev/null || echo "")
 
+  # Extract additional context for notifications (issue #315)
+  local message=$(jq -r '.message // ""' "$trigger_file" 2>/dev/null || echo "")
+  local pr=$(jq -r '.context.pr // ""' "$trigger_file" 2>/dev/null || echo "")
+
   # Task 3: Read trigger content early (for future use in real invocation)
   local trigger_content=$(cat "$trigger_file")
 
@@ -511,8 +515,8 @@ invoke_agent_parallel() {
   fi
 
   (
-    # Reserve agent slot immediately
-    mark_agent_busy "$to_agent" "$$" "$ticket"
+    # Reserve agent slot immediately with notification context (issue #315)
+    mark_agent_busy "$to_agent" "$$" "$ticket" "$message" "$pr"
 
     # Ensure slot is released on exit
     trap "mark_agent_idle \"$to_agent\"" EXIT
@@ -595,8 +599,8 @@ invoke_agent_parallel() {
   # Save PID
   local agent_pid=$!
 
-  # Update slot with actual background PID
-  mark_agent_busy "$to_agent" "$agent_pid" "$ticket"
+  # Update slot with actual background PID and notification context (issue #315)
+  mark_agent_busy "$to_agent" "$agent_pid" "$ticket" "$message" "$pr"
 
   log_event "SPAWNED" "$to_agent started (PID: $agent_pid)"
   return 0
@@ -653,9 +657,11 @@ monitor_running_agents() {
 
           # Send success notification (if Discord configured)
           if type send_agent_complete_notification &>/dev/null; then
-            # Extract ticket from agent slot metadata
+            # Extract context from agent slot metadata (issue #315)
             local ticket=$(jq -r ".\"$agent\".ticket // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
-            send_agent_complete_notification "$agent" "0" "0" "parallel-task" "$ticket" &
+            local message=$(jq -r ".\"$agent\".message // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            local pr=$(jq -r ".\"$agent\".pr // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            send_agent_complete_notification "$agent" "0" "0" "parallel-task" "$ticket" "$message" "$pr" &
           fi
         else
           log_event "FINISH" "$agent failed (PID: $agent_pid, exit: $exit_code)"
