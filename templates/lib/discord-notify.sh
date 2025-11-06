@@ -224,19 +224,32 @@ send_agent_progress_notification() {
 ${message}"
   fi
 
-  # Build fields array
-  local fields='[{"name":"Elapsed","value":"'"${elapsed_min}m"'","inline":true},{"name":"Ticket","value":"'"$ticket"'","inline":true}'
-
-  # Add PR field if PR info provided
+  # Build fields array with proper JSON escaping
+  local fields
   if [ -n "$pr_number" ] && [ -n "$pr_url" ]; then
     local pr_display="[#${pr_number}](${pr_url})"
     if [ -n "$pr_title" ]; then
       pr_display="${pr_display}: ${pr_title}"
     fi
-    fields="${fields},{\"name\":\"PR\",\"value\":\"${pr_display}\",\"inline\":false}"
-  fi
 
-  fields="${fields}]"
+    fields=$(jq -n \
+      --arg elapsed "${elapsed_min}m" \
+      --arg ticket "$ticket" \
+      --arg pr_display "$pr_display" \
+      '[
+        {name: "Elapsed", value: $elapsed, inline: true},
+        {name: "Ticket", value: $ticket, inline: true},
+        {name: "PR", value: $pr_display, inline: false}
+      ]')
+  else
+    fields=$(jq -n \
+      --arg elapsed "${elapsed_min}m" \
+      --arg ticket "$ticket" \
+      '[
+        {name: "Elapsed", value: $elapsed, inline: true},
+        {name: "Ticket", value: $ticket, inline: true}
+      ]')
+  fi
 
   send_discord_daemon_notification \
     "$agent" \

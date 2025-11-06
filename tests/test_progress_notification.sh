@@ -255,6 +255,162 @@ test_message_field() {
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Test 7: Security - PR title with double quotes
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test_security_double_quotes() {
+  echo ""
+  echo "Test 7: Security - PR title with double quotes"
+  echo "=============================================="
+
+  rm -f "$CURL_PAYLOAD_FILE"
+  export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/test"
+
+  send_agent_progress_notification \
+    "qa-engineer" \
+    15 \
+    "310" \
+    "Review PR" \
+    "304" \
+    'Fix "quoted" bug' \
+    "https://github.com/user/repo/pull/304"
+
+  local exit_code=$?
+  assert_equals 0 $exit_code "Function should handle PR title with double quotes"
+
+  local CURL_PAYLOAD=$(get_curl_payload)
+
+  # Verify payload is valid JSON
+  if echo "$CURL_PAYLOAD" | jq . > /dev/null 2>&1; then
+    echo "✅ PASS: Payload is valid JSON despite double quotes in PR title"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "❌ FAIL: Payload is invalid JSON (JSON injection vulnerability)"
+    echo "Payload: $CURL_PAYLOAD"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1))
+
+  # Verify PR title is correctly escaped
+  local pr_value=$(echo "$CURL_PAYLOAD" | jq -r '.embeds[0].fields[] | select(.name == "PR") | .value' 2>/dev/null || echo "")
+  assert_contains "$pr_value" "Fix \"quoted\" bug" "PR title with quotes should be correctly escaped"
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Test 8: Security - PR title with newlines
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test_security_newlines() {
+  echo ""
+  echo "Test 8: Security - PR title with newlines"
+  echo "=========================================="
+
+  rm -f "$CURL_PAYLOAD_FILE"
+  export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/test"
+
+  send_agent_progress_notification \
+    "qa-engineer" \
+    15 \
+    "310" \
+    "Review PR" \
+    "304" \
+    $'Fix\nbug' \
+    "https://github.com/user/repo/pull/304"
+
+  local exit_code=$?
+  assert_equals 0 $exit_code "Function should handle PR title with newlines"
+
+  local CURL_PAYLOAD=$(get_curl_payload)
+
+  # Verify payload is valid JSON
+  if echo "$CURL_PAYLOAD" | jq . > /dev/null 2>&1; then
+    echo "✅ PASS: Payload is valid JSON despite newlines in PR title"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "❌ FAIL: Payload is invalid JSON (JSON injection vulnerability)"
+    echo "Payload: $CURL_PAYLOAD"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1))
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Test 9: Security - PR title with backslashes
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test_security_backslashes() {
+  echo ""
+  echo "Test 9: Security - PR title with backslashes"
+  echo "============================================="
+
+  rm -f "$CURL_PAYLOAD_FILE"
+  export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/test"
+
+  send_agent_progress_notification \
+    "qa-engineer" \
+    15 \
+    "310" \
+    "Review PR" \
+    "304" \
+    'Fix \\ bug' \
+    "https://github.com/user/repo/pull/304"
+
+  local exit_code=$?
+  assert_equals 0 $exit_code "Function should handle PR title with backslashes"
+
+  local CURL_PAYLOAD=$(get_curl_payload)
+
+  # Verify payload is valid JSON
+  if echo "$CURL_PAYLOAD" | jq . > /dev/null 2>&1; then
+    echo "✅ PASS: Payload is valid JSON despite backslashes in PR title"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "❌ FAIL: Payload is invalid JSON (JSON injection vulnerability)"
+    echo "Payload: $CURL_PAYLOAD"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1))
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Test 10: Security - PR title with single quotes
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test_security_single_quotes() {
+  echo ""
+  echo "Test 10: Security - PR title with single quotes"
+  echo "================================================"
+
+  rm -f "$CURL_PAYLOAD_FILE"
+  export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/test"
+
+  send_agent_progress_notification \
+    "qa-engineer" \
+    15 \
+    "310" \
+    "Review PR" \
+    "304" \
+    "Fix 'bug'" \
+    "https://github.com/user/repo/pull/304"
+
+  local exit_code=$?
+  assert_equals 0 $exit_code "Function should handle PR title with single quotes"
+
+  local CURL_PAYLOAD=$(get_curl_payload)
+
+  # Verify payload is valid JSON
+  if echo "$CURL_PAYLOAD" | jq . > /dev/null 2>&1; then
+    echo "✅ PASS: Payload is valid JSON despite single quotes in PR title"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "❌ FAIL: Payload is invalid JSON (JSON injection vulnerability)"
+    echo "Payload: $CURL_PAYLOAD"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1))
+
+  # Verify PR title is correctly rendered
+  local pr_value=$(echo "$CURL_PAYLOAD" | jq -r '.embeds[0].fields[] | select(.name == "PR") | .value' 2>/dev/null || echo "")
+  assert_contains "$pr_value" "Fix 'bug'" "PR title with single quotes should be correctly rendered"
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Run all tests
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -268,6 +424,10 @@ test_pr_field_link
 test_elapsed_field
 test_backward_compatible
 test_message_field
+test_security_double_quotes
+test_security_newlines
+test_security_backslashes
+test_security_single_quotes
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Summary
