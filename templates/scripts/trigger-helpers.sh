@@ -84,6 +84,10 @@ TRIGGER_JSON
 
   echo "✅ Trigger created: $trigger_file"
 
+  # Log event
+  source "$(dirname "${BASH_SOURCE[0]}")/../lib/event-log.sh" 2>/dev/null || true
+  log_event "$from_agent" "trigger_created" to_agent=$to_agent action=$action trace_id=$trace_id
+
   # 🔔 SEND macOS NOTIFICATION
   if command -v terminal-notifier &> /dev/null; then
     terminal-notifier -title "🤖 $from_agent → $to_agent" -subtitle "Action: $action" -message "$message" -sender com.googlecode.iterm2 2>/dev/null || true
