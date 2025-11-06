@@ -143,22 +143,26 @@ send_discord_daemon_notification() {
   # Always inject trace_id as first field
   local final_fields=$(echo "$fields" | jq --arg trace "$trace_id" '. = [{"name":"Trace ID","value":$trace,"inline":false}] + .')
 
-  # Build JSON payload with Discord embed format
-  local payload=$(cat <<EOF
-{
-  "embeds": [{
-    "title": "$title",
-    "description": "$description",
-    "color": $color,
-    "fields": $final_fields,
-    "timestamp": "$timestamp",
-    "footer": {
-      "text": "StarForge Daemon"
-    }
-  }]
-}
-EOF
-)
+  # Build JSON payload using jq to properly escape strings
+  local payload=$(jq -n \
+    --arg title "$title" \
+    --arg description "$description" \
+    --argjson color "$color" \
+    --argjson fields "$final_fields" \
+    --arg timestamp "$timestamp" \
+    '{
+      embeds: [{
+        title: $title,
+        description: $description,
+        color: $color,
+        fields: $fields,
+        timestamp: $timestamp,
+        footer: {
+          text: "StarForge Daemon"
+        }
+      }]
+    }'
+  )
 
   # Send asynchronously to avoid blocking daemon
   # (Failures are silent - Discord notifications are optional)
@@ -190,21 +194,69 @@ send_agent_start_notification() {
 }
 
 #
-# send_agent_progress_notification <agent> <elapsed_min> <ticket>
+# send_agent_progress_notification <agent> <elapsed_min> <ticket> <message> <pr_number> <pr_title> <pr_url>
 #
 # Convenience wrapper for agent progress notifications.
+#
+# Args:
+#   agent: Agent name (e.g., "qa-engineer")
+#   elapsed_min: Minutes elapsed since start
+#   ticket: Ticket number (e.g., "310", optional defaults to "N/A")
+#   message: Progress message (e.g., "Review PR #304: daemon fix", optional)
+#   pr_number: PR number (e.g., "304", optional)
+#   pr_title: PR title (e.g., "Add daemon monitoring", optional)
+#   pr_url: PR URL (e.g., "https://github.com/user/repo/pull/304", optional)
 #
 send_agent_progress_notification() {
   local agent=$1
   local elapsed_min=$2
   local ticket=${3:-N/A}
+  local message=${4:-}
+  local pr_number=${5:-}
+  local pr_title=${6:-}
+  local pr_url=${7:-}
+
+  # Build description with message if provided
+  local description="**$agent** still working"
+  if [ -n "$message" ]; then
+    description="**$agent** still working
+
+${message}"
+  fi
+
+  # Build fields array with proper JSON escaping
+  local fields
+  if [ -n "$pr_number" ] && [ -n "$pr_url" ]; then
+    local pr_display="[#${pr_number}](${pr_url})"
+    if [ -n "$pr_title" ]; then
+      pr_display="${pr_display}: ${pr_title}"
+    fi
+
+    fields=$(jq -n \
+      --arg elapsed "${elapsed_min}m" \
+      --arg ticket "$ticket" \
+      --arg pr_display "$pr_display" \
+      '[
+        {name: "Elapsed", value: $elapsed, inline: true},
+        {name: "Ticket", value: $ticket, inline: true},
+        {name: "PR", value: $pr_display, inline: false}
+      ]')
+  else
+    fields=$(jq -n \
+      --arg elapsed "${elapsed_min}m" \
+      --arg ticket "$ticket" \
+      '[
+        {name: "Elapsed", value: $elapsed, inline: true},
+        {name: "Ticket", value: $ticket, inline: true}
+      ]')
+  fi
 
   send_discord_daemon_notification \
     "$agent" \
     "⏳ Agent Progress" \
-    "**$agent** still working" \
+    "$description" \
     "$COLOR_WARNING" \
-    "[{\"name\":\"Elapsed\",\"value\":\"${elapsed_min}m\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]"
+    "$fields"
 }
 
 #
@@ -315,22 +367,26 @@ send_discord_system_notification() {
   # Generate ISO 8601 timestamp
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
-  # Build JSON payload
-  local payload=$(cat <<EOF
-{
-  "embeds": [{
-    "title": "$title",
-    "description": "$description",
-    "color": $color,
-    "fields": $fields,
-    "timestamp": "$timestamp",
-    "footer": {
-      "text": "StarForge System"
-    }
-  }]
-}
-EOF
-)
+  # Build JSON payload using jq to properly escape strings
+  local payload=$(jq -n \
+    --arg title "$title" \
+    --arg description "$description" \
+    --argjson color "$color" \
+    --argjson fields "$fields" \
+    --arg timestamp "$timestamp" \
+    '{
+      embeds: [{
+        title: $title,
+        description: $description,
+        color: $color,
+        fields: $fields,
+        timestamp: $timestamp,
+        footer: {
+          text: "StarForge System"
+        }
+      }]
+    }'
+  )
 
   # Send asynchronously
   curl -X POST "$webhook_url" \
