@@ -335,7 +335,7 @@ send_agent_timeout_notification() {
 }
 
 #
-# send_agent_error_notification <agent> <exit_code> <duration_min> <ticket> <trace_id>
+# send_agent_error_notification <agent> <exit_code> <duration_min> <ticket> <pr_number> <pr_title> <pr_url> <trace_id>
 #
 # Convenience wrapper for agent error notifications.
 #
@@ -344,14 +344,51 @@ send_agent_error_notification() {
   local exit_code=$2
   local duration_min=$3
   local ticket=${4:-N/A}
-  local trace_id=${5:-""}
+  local pr_number=${5:-""}
+  local pr_title=${6:-""}
+  local pr_url=${7:-""}
+  local trace_id=${8:-""}
+
+  # Build description with PR context
+  local description="**$agent** crashed with exit code $exit_code"
+
+  # Build fields JSON with PR context if available
+  local fields
+  if [ -n "$pr_number" ] && [ "$pr_number" != "N/A" ]; then
+    local pr_display="[#$pr_number]($pr_url)"
+    if [ -n "$pr_title" ]; then
+      pr_display="$pr_display\n$pr_title"
+    fi
+
+    fields=$(jq -n \
+      --arg exit_code "$exit_code" \
+      --arg duration "${duration_min}m" \
+      --arg ticket "$ticket" \
+      --arg pr "$pr_display" \
+      '[
+        {name: "Exit Code", value: $exit_code, inline: true},
+        {name: "Duration", value: $duration, inline: true},
+        {name: "Ticket", value: $ticket, inline: true},
+        {name: "PR", value: $pr, inline: false}
+      ]')
+  else
+    fields=$(jq -n \
+      --arg exit_code "$exit_code" \
+      --arg duration "${duration_min}m" \
+      --arg ticket "$ticket" \
+      '[
+        {name: "Exit Code", value: $exit_code, inline: true},
+        {name: "Duration", value: $duration, inline: true},
+        {name: "Ticket", value: $ticket, inline: true}
+      ]')
+  fi
 
   send_discord_daemon_notification \
     "$agent" \
     "❌ Agent Failed" \
-    "**$agent** crashed with exit code $exit_code" \
+    "$description" \
     "$COLOR_ERROR" \
-    "[{\"name\":\"Exit Code\",\"value\":\"$exit_code\",\"inline\":true},{\"name\":\"Duration\",\"value\":\"${duration_min}m\",\"inline\":true},{\"name\":\"Ticket\",\"value\":\"$ticket\",\"inline\":true}]" \
+    "$fields" \
     "$trace_id"
 }
 

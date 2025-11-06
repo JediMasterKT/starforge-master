@@ -292,6 +292,8 @@ invoke_agent() {
   # Extract context object and individual fields (issue #311)
   local context_json=$(jq -c '.context // {}' "$trigger_file" 2>/dev/null || echo "{}")
   local pr=$(jq -r '.context.pr // ""' "$trigger_file" 2>/dev/null || echo "")
+  local pr_title=$(jq -r '.context.pr_title // ""' "$trigger_file" 2>/dev/null || echo "")
+  local pr_url=$(jq -r '.context.pr_url // ""' "$trigger_file" 2>/dev/null || echo "")
   local description=$(jq -r '.context.description // ""' "$trigger_file" 2>/dev/null || echo "")
 
   # Build prompt for agent
@@ -389,7 +391,7 @@ invoke_agent() {
       # Send error notification (if Discord configured)
       if type send_agent_error_notification &>/dev/null; then
         local duration_min=$((duration / 60))
-        send_agent_error_notification "$to_agent" "$exit_code" "$duration_min" "$ticket" "$trace_id"
+        send_agent_error_notification "$to_agent" "$exit_code" "$duration_min" "$ticket" "$pr" "$pr_title" "$pr_url" "$trace_id"
       fi
     fi
     return 1
@@ -669,7 +671,10 @@ monitor_running_agents() {
           # Send error notification (if Discord configured)
           if type send_agent_error_notification &>/dev/null; then
             local ticket=$(jq -r ".\"$agent\".ticket // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
-            send_agent_error_notification "$agent" "$exit_code" "0" "$ticket" &
+            local pr=$(jq -r ".\"$agent\".pr // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            local pr_title=$(jq -r ".\"$agent\".pr_title // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            local pr_url=$(jq -r ".\"$agent\".pr_url // \"\"" "$AGENT_SLOTS_FILE" 2>/dev/null || echo "")
+            send_agent_error_notification "$agent" "$exit_code" "0" "$ticket" "$pr" "$pr_title" "$pr_url" &
           fi
         fi
 
