@@ -946,6 +946,12 @@ case "$COMMAND" in
         chmod +x "$CLAUDE_DIR/bin"/*
         echo -e "${CHECK} Updated bin scripts"
 
+        # Update library files
+        echo -e "${INFO}Updating library files..."
+        cp "$STARFORGE_DIR/templates/lib"/*.sh "$CLAUDE_DIR/lib/"
+        chmod +x "$CLAUDE_DIR/lib"/*.sh
+        echo -e "${CHECK} Updated library files"
+
         # Update protocol files
         echo -e "${INFO}Updating protocol files..."
         
@@ -1024,6 +1030,7 @@ case "$COMMAND" in
         echo -e "${YELLOW}Updated components:${NC}"
         echo "  - 5 agent definitions (orchestrator, senior-engineer, junior-engineer, qa-engineer, tpm-agent)"
         echo "  - Scripts (trigger-monitor, trigger-helpers, watch-triggers)"
+        echo "  - Library files (19 shared helpers: discord-notify, compensation, event-log, lock-helpers, etc.)"
         echo "  - Hooks (block-main-edits, block-main-bash, stop.py with Discord integration)"
         echo "  - Bin scripts (daemon, daemon-runner)"
         echo "  - Protocol files (CLAUDE.md, LEARNINGS.md)"
